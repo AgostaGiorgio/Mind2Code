@@ -44,7 +44,11 @@ Copy `.env.example` to `.env` and fill in the values:
 
 | Variable | Description |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL async connection URI (`postgresql+asyncpg://...`) |
+| `POSTGRESQL_USER` | PostgreSQL user |
+| `POSTGRESQL_PASSWORD` | PostgreSQL password |
+| `POSTGRESQL_HOST` | PostgreSQL host |
+| `POSTGRESQL_PORT` | PostgreSQL port |
+| `POSTGRESQL_DATABASE` | PostgreSQL database name |
 | `CORS_ORIGINS` | JSON array of allowed origins, e.g. `["http://localhost:5173"]` |
 | `LOG_LEVEL` | *(optional)* Python logging level (default `INFO`) |
 
@@ -88,5 +92,8 @@ yoyo rollback --database <db_url> ./migrations # roll back the last one
 
 ```sh
 docker build -t mind2code-backend .
-docker run -p 8000:8000 -e DATABASE_URL=<async_db_url> -e CORS_ORIGINS='["http://localhost:5173"]' mind2code-backend
+docker run -p 8000:8000 \
+  -e POSTGRESQL_USER=appuser -e POSTGRESQL_PASSWORD=post-password \
+  -e POSTGRESQL_HOST=localhost -e POSTGRESQL_PORT=5432 -e POSTGRESQL_DATABASE=mind2code \
+  -e CORS_ORIGINS='["http://localhost:5173"]' mind2code-backend
 ```

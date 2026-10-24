@@ -11,7 +11,18 @@ class AppConfig(BaseSettings):
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]
 
-    database_url: str = Field(..., description="PostgreSQL async connection URI (postgresql+asyncpg://...)")
+    postgresql_user: str = Field(..., description="PostgreSQL user")
+    postgresql_password: str = Field(..., description="PostgreSQL password")
+    postgresql_host: str = Field(..., description="PostgreSQL host")
+    postgresql_port: str = Field(..., description="PostgreSQL port")
+    postgresql_database: str = Field(..., description="PostgreSQL database name")
+
+    @property
+    def postgresql_connection_uri(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.postgresql_user}:{self.postgresql_password}@"
+            f"{self.postgresql_host}:{self.postgresql_port}/{self.postgresql_database}"
+        )
 
     log_level: str = Field(default="INFO", description="Python logging level")
 

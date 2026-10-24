@@ -11,7 +11,7 @@ from src.sse.broker import EventBroker
 
 class Container(containers.DeclarativeContainer):
     postgres_client = providers.Singleton(
-        PostgresClient, db_url=app_config.database_url
+        PostgresClient, db_url=app_config.postgresql_connection_uri
     )
 
     event_broker = providers.Singleton(EventBroker)

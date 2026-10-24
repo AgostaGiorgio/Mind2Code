@@ -124,7 +124,11 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 
 | Variable | Description |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL async connection URI (`postgresql+asyncpg://...`) |
+| `POSTGRESQL_USER` | PostgreSQL user |
+| `POSTGRESQL_PASSWORD` | PostgreSQL password |
+| `POSTGRESQL_HOST` | PostgreSQL host |
+| `POSTGRESQL_PORT` | PostgreSQL port |
+| `POSTGRESQL_DATABASE` | PostgreSQL database name |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins (e.g. `http://localhost:5173`) |
 | `ENABLE_PROGRESS_POLLING` | Poll PostgreSQL for externally written progress updates (default `true`) |
 | `POLL_INTERVAL_SECONDS` | Seconds between progress polls (default `2`) |

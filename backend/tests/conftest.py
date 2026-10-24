@@ -11,7 +11,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 # Must be set before importing src.* because AppConfig is instantiated at import time.
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://test:test@localhost:5432/test_db"
+os.environ["POSTGRESQL_USER"] = "test"
+os.environ["POSTGRESQL_PASSWORD"] = "test"
+os.environ["POSTGRESQL_HOST"] = "localhost"
+os.environ["POSTGRESQL_PORT"] = "5432"
+os.environ["POSTGRESQL_DATABASE"] = "test_db"
 os.environ["CORS_ORIGINS"] = '["http://localhost:5173"]'
 os.environ["LOG_LEVEL"] = "WARNING"
 # Endpoint tests must not start a real DB-polling background task.
