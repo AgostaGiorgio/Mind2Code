@@ -1,0 +1,119 @@
+import asyncio
+import logging
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
+
+from src.db.models.project import (
+    ProgressUpdateRequest,
+    Project,
+    ProjectDetail,
+    ProjectNameUpdateRequest,
+)
+from src.di import Container
+from src.services.projects import FinalizeResult, ProjectService
+from src.sse.broker import EventBroker
+
+logger = logging.getLogger(__name__)
+
+api_router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+@api_router.get("", response_model=list[Project], status_code=200)
+@inject
+async def get_projects(
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> list[Project]:
+    return await project_service.list_projects()
+
+
+@api_router.get("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@inject
+async def get_project_detail(
+    execution_id: int,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    project = await project_service.get_project_detail(execution_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+@api_router.patch("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@inject
+async def rename_project(
+    execution_id: int,
+    payload: ProjectNameUpdateRequest,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    updated = await project_service.rename_project(execution_id, payload)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return updated
+
+
+@api_router.post("/{execution_id}/finalize", status_code=204)
+@inject
+async def finalize_project(
+    execution_id: int,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> Response:
+    result = await project_service.finalize_project(execution_id)
+
+    if result is FinalizeResult.OK:
+        return Response(status_code=204)
+    if result is FinalizeResult.NOT_FOUND:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    if result is FinalizeResult.CONFLICT:
+        raise HTTPException(
+            status_code=409, detail="Project is not eligible for finalization."
+        )
+    raise HTTPException(status_code=503, detail="Could not start the finalization workflow.")
+
+
+@api_router.post("/{execution_id}/progress", response_model=Project, status_code=200)
+@inject
+async def update_progress(
+    execution_id: int,
+    payload: ProgressUpdateRequest,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> Project:
+    updated = await project_service.update_progress(execution_id, payload)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return updated
+
+
+events_router = APIRouter(tags=["events"])
+
+
+@events_router.get("/events")
+@inject
+async def events_stream(
+    request: Request,
+    event_broker: EventBroker = Depends(Provide[Container.event_broker]),
+) -> StreamingResponse:
+    async def event_generator():
+        queue = event_broker.subscribe()
+        logger.debug("SSE client connected.")
+        try:
+            while not await request.is_disconnected():
+                try:
+                    name, payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                else:
+                    yield f"event: {name}\ndata: {payload}\n\n"
+        finally:
+            event_broker.unsubscribe(queue)
+            logger.debug("SSE client disconnected.")
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

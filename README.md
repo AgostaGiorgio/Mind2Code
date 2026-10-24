@@ -1,0 +1,181 @@
+# Mind2Code
+
+A single-user, mobile-first web application that tracks a portfolio of projects and streams live completion-percentage updates via Server-Sent Events (SSE).
+
+## Monorepo layout
+
+```
+.
+├── backend/   # FastAPI + Uvicorn + SQLAlchemy async + PostgreSQL
+├── frontend/  # Vue 3 + Vite + TypeScript + Tailwind CSS
+└── README.md
+```
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Backend | Python 3.12, FastAPI, Uvicorn, SQLAlchemy 2.0 (async), asyncpg, dependency-injector, yoyo-migrations, Pydantic |
+| Frontend | Node.js 20+, Vue 3, Vite, TypeScript, Tailwind CSS, axios, vue-router |
+| Database | PostgreSQL 15+ |
+
+## API contract
+
+All REST endpoints are prefixed with `/api/v1`.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Health check |
+| `GET` | `/api/v1/projects` | List all projects (lean payload) |
+| `GET` | `/api/v1/projects/{executionId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
+| `PATCH` | `/api/v1/projects/{executionId}` | Rename a project (`{ "name": "..." }`) |
+| `POST` | `/api/v1/projects/{executionId}/finalize` | Start finalization (release) — 204 `{ executionId }` |
+| `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
+| `POST` | `/api/v1/projects/{executionId}/progress` | Update a project's completion percentage |
+
+### Project list and detail page
+
+The dashboard renders a **single card containing one row per project** (name,
+GitHub icon, and a **Status** column with the completion ring next to the
+finalization control — a rocket to release, an orange ring while in progress, or
+a warning icon on error). Clicking anywhere on a row (except the GitHub icon and
+the finalize control) navigates to `/projects/{executionId}`; the chevron is the
+keyboard-accessible target. The detail page fetches the project with
+`GET /api/v1/projects/{executionId}` and shows its header plus five tabs —
+**Final Review** (opened first), **User Input**, **Requirements**,
+**Code Summary** and **Test Summary** — each rendered from Markdown. When the
+**Retrospective** document is present it is shown first, highlighted above the
+other sections. The project name can be edited inline from the detail page
+header. The document `TEXT` columns (`user_input`, `requirements`,
+`code-summary`, `test-summary`, `review`, `retrospective`) live on the
+`projects` table (migrations `0002`, `0003` and `0005`) and are populated by
+the external service, like the completion percentage.
+
+### SSE event contract
+
+- Endpoint: `GET /api/v1/events`
+- Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`
+- Event types: `progress` and `finalization`
+
+`progress` payload (JSON):
+
+```json
+{
+  "executionId": 101,
+  "completionPercentage": 75
+}
+```
+
+`finalization` payload (JSON):
+
+```json
+{
+  "executionId": 101,
+  "finalizationPercentage": 60,
+  "finalRepoUrl": null,
+  "finalizeError": null
+}
+```
+
+A heartbeat comment (`: heartbeat`) is sent at least every 15 seconds to keep proxies from closing an idle connection.
+
+### Progress ingestion
+
+Completion updates can reach the backend in two ways:
+
+1. **External writer (primary).** A separate service updates the `projects` rows
+   directly in PostgreSQL. A background poller in the backend (`ProgressPoller`)
+   reads the rows whose `updated_at` moved past a watermark every
+   `POLL_INTERVAL_SECONDS` seconds and broadcasts the matching `progress` events
+   to all connected SSE clients. The backend is therefore no longer required to
+   be the writer in order to stream updates.
+2. **HTTP API.** `POST /api/v1/projects/{executionId}/progress` still persists the
+   update and broadcasts immediately.
+
+Because the polling path and the API path can observe the same row change, the
+SSE broker collapses consecutive identical values for a given `executionId` and
+event type, so clients receive exactly one event per actual change.
+
+### Finalization
+
+A project that reaches `completion_percentage = 100` can be **finalized**: the
+demo is released as a real, public GitHub repository. The `finalization_percentage`
+column tracks the release progress (`0` = not started, `1..99` = in progress,
+`100` = done) and `final_repo_url` holds the released repository URL.
+
+Flow:
+
+1. The UI shows a **Finalize** action only when the project is 100% complete
+   (a rocket in the dashboard, a labelled button on the detail page).
+2. `POST /api/v1/projects/{executionId}/finalize` validates eligibility (409 if not
+   complete, already finalizing or already finalized), atomically sets
+   `finalization_percentage = 1` and calls the n8n webhook → `204`.
+3. n8n performs the work (create repo, single-commit push) and writes the
+   progress back to PostgreSQL, bumping `updated_at` at each step.
+4. The poller observes the changes and streams `finalization` events over the
+   same SSE channel.
+
+If the webhook cannot be reached, the backend rolls the request back to `0`
+(with `finalize_error`) so the user can retry.
+
+## Environment variables
+
+### Backend (`backend/.env.example`)
+
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL async connection URI (`postgresql+asyncpg://...`) |
+| `CORS_ORIGINS` | Comma-separated list of allowed origins (e.g. `http://localhost:5173`) |
+| `ENABLE_PROGRESS_POLLING` | Poll PostgreSQL for externally written progress updates (default `true`) |
+| `POLL_INTERVAL_SECONDS` | Seconds between progress polls (default `2`) |
+| `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
+| `FINALIZE_WEBHOOK_TIMEOUT_SECONDS` | Timeout for the n8n finalize webhook call (default `10`) |
+
+### Frontend (`frontend/.env.example`)
+
+| Variable | Description |
+| --- | --- |
+| `VITE_API_BASE_URL` | Backend base URL used at build time (e.g. `http://localhost:8000`) |
+
+## Local development
+
+1. Start PostgreSQL and create a database named `mind2code`.
+2. Copy and fill environment files:
+
+```sh
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+3. Apply backend migrations:
+
+```sh
+cd backend
+poetry install
+yoyo apply --database postgresql://USER:PASSWORD@localhost:5432/mind2code ./migrations
+```
+
+4. Start the backend:
+
+```sh
+poetry run python src/main.py
+```
+
+5. Start the frontend:
+
+```sh
+cd ../frontend
+npm install
+npm run dev
+```
+
+The dashboard is available at `http://localhost:5173` and the API docs at `http://localhost:8000/docs`.
+
+## Docker
+
+Both services can be built with their respective Dockerfiles:
+
+```sh
+cd backend && docker build -t mind2code-backend .
+cd ../frontend && docker build --build-arg VITE_API_BASE_URL=http://localhost:8000 -t mind2code-frontend .
+```

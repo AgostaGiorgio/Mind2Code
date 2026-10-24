@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background-color: #0f172a;
+}
+
+body {
+  @apply bg-brand-background text-brand-textMain;
+}
+
+@layer components {
+  /* Card with a gradient border ("soft"): gradient on the border + backdrop blur.
+     The radius is overridable with utilities (e.g. rounded-app). */
+  .app-card {
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(rgba(30, 41, 59, 0.55), rgba(30, 41, 59, 0.55)) padding-box,
+      linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0.07)) border-box;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Markdown viewer for the project detail tabs. Long unbroken tokens (URLs,
+     inline code) wrap instead of forcing a horizontal scroll on the page. */
+  .markdown-body {
+    @apply text-sm leading-relaxed text-brand-textMuted;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .markdown-body > *:first-child {
+    @apply mt-0;
+  }
+  .markdown-body > *:last-child {
+    @apply mb-0;
+  }
+  .markdown-body h1 {
+    @apply mb-3 mt-5 text-lg font-bold text-brand-textMain;
+  }
+  .markdown-body h2 {
+    @apply mb-2 mt-5 text-base font-bold text-brand-textMain;
+  }
+  .markdown-body h3,
+  .markdown-body h4,
+  .markdown-body h5,
+  .markdown-body h6 {
+    @apply mb-2 mt-4 text-sm font-semibold text-brand-textMain;
+  }
+  .markdown-body p {
+    @apply my-3;
+  }
+  .markdown-body a {
+    @apply text-brand-primary underline underline-offset-2 hover:text-brand-secondary;
+  }
+  .markdown-body ul {
+    @apply my-3 list-disc pl-5;
+  }
+  .markdown-body ol {
+    @apply my-3 list-decimal pl-5;
+  }
+  .markdown-body li {
+    @apply my-1;
+  }
+  .markdown-body blockquote {
+    @apply my-3 border-l-2 border-brand-primary/40 pl-3 italic text-brand-textMuted;
+  }
+  .markdown-body hr {
+    @apply my-4 border-white/10;
+  }
+  .markdown-body strong {
+    @apply font-semibold text-brand-textMain;
+  }
+  .markdown-body :not(pre) > code {
+    @apply rounded bg-white/10 px-1 py-0.5 font-mono text-[13px] text-brand-textMain;
+  }
+  .markdown-body pre {
+    @apply my-3 max-w-full overflow-x-auto rounded-app-sm bg-black/40 p-3 text-[13px] leading-relaxed;
+  }
+  .markdown-body pre code {
+    @apply bg-transparent p-0 font-mono;
+  }
+  /* Tables scroll horizontally on their own instead of the whole page. */
+  .markdown-table-wrap {
+    @apply my-3 w-full max-w-full overflow-x-auto;
+  }
+  .markdown-body table {
+    @apply my-0 w-full border-collapse text-left;
+  }
+  .markdown-body th,
+  .markdown-body td {
+    @apply border-b border-white/10 px-2 py-1.5;
+  }
+  .markdown-body th {
+    @apply font-semibold text-brand-textMain;
+  }
+  .markdown-body img {
+    @apply my-3 max-w-full rounded-app-sm;
+  }
+}
+
+/* Hide the scrollbar while keeping scroll (carousels, horizontal lists). */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* BottomSheet transitions (teleported to body, so not scoped). */
+.sheet-enter-active,
+.sheet-leave-active {
+  transition: opacity 0.25s ease;
+}
+.sheet-enter-from,
+.sheet-leave-to {
+  opacity: 0;
+}
+.sheet-enter-active .sheet-panel,
+.sheet-leave-active .sheet-panel {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sheet-enter-from .sheet-panel,
+.sheet-leave-to .sheet-panel {
+  transform: translateY(100%);
+}

@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "mind2code-backend"
+version = "0.1.0"
+description = "Project dashboard backend"
+authors = ["Your Name <you@example.com>"]
+packages = [
+    { include = "src" },
+]
+# readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.110.0"
+uvicorn = { extras = ["standard"], version = "^0.28.0" }
+pyyaml = "^6.0.3"
+dependency-injector = "^4.41.0"
+tomli = "^2.4.0"
+sqlalchemy = "^2.0.46"
+asyncpg = "^0.31.0"
+httpx = "^0.28.1"
+pydantic-settings = "^2.13.1"
+pydantic = "^2.12.5"
+greenlet = "^3.3.1"
+python-json-logger = "^3.3.0"
+
+[tool.poetry.group.dev.dependencies]
+yoyo-migrations = "^9.0.0"
+psycopg2-binary = "^2.9.11"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

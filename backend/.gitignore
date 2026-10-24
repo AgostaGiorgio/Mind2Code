@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Poetry
+# NOTE: poetry.toml is committed on purpose (create = false); do not ignore it.
+
+# Environment / secrets
+.env
+.env.local
+*.env
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Poetry lock is committed. Uncomment only if you decide otherwise.
+# poetry.lock
