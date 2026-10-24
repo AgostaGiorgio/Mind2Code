@@ -130,6 +130,8 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 | `POLL_INTERVAL_SECONDS` | Seconds between progress polls (default `2`) |
 | `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
 | `FINALIZE_WEBHOOK_TIMEOUT_SECONDS` | Timeout for the n8n finalize webhook call (default `10`) |
+| `ORBIT_API_URL` | Full Orbit registration endpoint (`https://api.orbit.agogi.dev/api/v1/register`); unset ⇒ Orbit disabled |
+| `APP_URL` | Public URL of this service, shown in Orbit (must be an absolute http(s) URL) |
 
 ### Frontend (`frontend/.env.example`)
 

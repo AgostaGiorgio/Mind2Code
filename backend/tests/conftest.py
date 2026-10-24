@@ -16,6 +16,8 @@ os.environ["CORS_ORIGINS"] = '["http://localhost:5173"]'
 os.environ["LOG_LEVEL"] = "WARNING"
 # Endpoint tests must not start a real DB-polling background task.
 os.environ["ENABLE_PROGRESS_POLLING"] = "false"
+# Tests must not register against the real Orbit registry.
+os.environ["ORBIT_API_URL"] = ""
 
 import pytest  # noqa: E402
 from dependency_injector import providers  # noqa: E402
