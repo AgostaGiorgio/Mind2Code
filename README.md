@@ -40,16 +40,23 @@ GitHub icon, and a **Status** column with the completion ring next to the
 finalization control — a rocket to release, an orange ring while in progress, or
 a warning icon on error). Clicking anywhere on a row (except the GitHub icon and
 the finalize control) navigates to `/projects/{executionId}`; the chevron is the
-keyboard-accessible target. The detail page fetches the project with
-`GET /api/v1/projects/{executionId}` and shows its header plus five tabs —
-**Final Review** (opened first), **User Input**, **Requirements**,
-**Code Summary** and **Test Summary** — each rendered from Markdown. When the
-**Retrospective** document is present it is shown first, highlighted above the
-other sections. The project name can be edited inline from the detail page
-header. The document `TEXT` columns (`user_input`, `requirements`,
-`code-summary`, `test-summary`, `review`, `retrospective`) live on the
-`projects` table (migrations `0002`, `0003` and `0005`) and are populated by
-the external service, like the completion percentage.
+keyboard-accessible target.
+
+The detail page fetches the project with `GET /api/v1/projects/{executionId}` and
+shows its header plus a **pipeline bar** with one step per phase, in order:
+**User Input → Requirements → Code → Tests → Review → Retrospective**. Each step
+has a dot that turns green when its document has content and is disabled
+otherwise; the selected phase is rendered from Markdown below the bar. On load
+the last available phase is selected, and it keeps following new phases as they
+arrive over SSE until the user picks an earlier one. The header shows a single
+ring with the completion (violet, outer arc) and, once the release has started or
+finished, the finalization (orange, inner arc) percentages — no numbers inside.
+The project name can be edited inline from the detail page header. The document
+`TEXT` columns
+(`user_input`, `requirements`, `code-summary`, `test-summary`, `review`,
+`retrospective`) live on the `projects` table (migrations `0002`, `0003` and
+`0005`) and are populated by the external service, like the completion
+percentage.
 
 ### SSE event contract
 
@@ -106,7 +113,7 @@ column tracks the release progress (`0` = not started, `1..99` = in progress,
 Flow:
 
 1. The UI shows a **Finalize** action only when the project is 100% complete
-   (a rocket in the dashboard, a labelled button on the detail page).
+   (a rocket in the dashboard).
 2. `POST /api/v1/projects/{executionId}/finalize` validates eligibility (409 if not
    complete, already finalizing or already finalized), atomically sets
    `finalization_percentage = 1` and calls the n8n webhook → `204`.

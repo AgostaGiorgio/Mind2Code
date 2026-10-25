@@ -1,15 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Check, Pencil, RefreshCw, Sparkles, X } from '@lucide/vue'
+import { ArrowLeft, Check, Pencil, RefreshCw, X } from '@lucide/vue'
 import { getProject, updateProjectName } from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
 import { useSse } from '@/composables/useSse'
 import { useToast } from '@/composables/useToast'
+import DualProgressRing from '@/components/ui/DualProgressRing.vue'
 import GitHubLink from '@/components/ui/GitHubLink.vue'
-import FinalizeControl from '@/components/ui/FinalizeControl.vue'
-import ProgressRing from '@/components/ui/ProgressRing.vue'
-import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import PhaseStepper from '@/components/ui/PhaseStepper.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 
 const route = useRoute()
@@ -17,16 +16,21 @@ const executionId = Number(route.params.executionId)
 
 const toast = useToast()
 
-const TABS = [
-  { value: 'finalReview', label: 'Final Review' },
-  { value: 'userInput', label: 'User Input' },
-  { value: 'requirements', label: 'Requirements' },
-  { value: 'codeSummary', label: 'Code Summary' },
-  { value: 'testSummary', label: 'Test Summary' },
+// The pipeline, in the order the phases are produced by the external service.
+const PHASES = [
+  { value: 'userInput', label: 'User Input', short: 'Input' },
+  { value: 'requirements', label: 'Requirements', short: 'Reqs' },
+  { value: 'codeSummary', label: 'Code', short: 'Code' },
+  { value: 'testSummary', label: 'Tests', short: 'Tests' },
+  { value: 'finalReview', label: 'Review', short: 'Review' },
+  { value: 'retrospective', label: 'Retrospective', short: 'Retro' },
 ]
 
 const project = ref(null)
-const activeTab = ref('finalReview')
+const activePhase = ref(null)
+// While true, the newest available phase stays selected (initial default and
+// live progress). A manual pick on an earlier phase disables it.
+const followLatest = ref(true)
 const loading = ref(true)
 const error = ref(null)
 
@@ -34,9 +38,48 @@ const editing = ref(false)
 const draftName = ref('')
 const saving = ref(false)
 
-const activeContent = computed(() => (project.value ? project.value[activeTab.value] : null))
+function hasContent(value) {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+const phaseOptions = computed(() =>
+  PHASES.map((phase) => ({
+    ...phase,
+    available: hasContent(project.value?.[phase.value]),
+  })),
+)
+
+const lastAvailablePhase = computed(() => {
+  for (let i = PHASES.length - 1; i >= 0; i -= 1) {
+    if (hasContent(project.value?.[PHASES[i].value])) return PHASES[i].value
+  }
+  return null
+})
+
+const activeContent = computed(() =>
+  project.value && activePhase.value ? project.value[activePhase.value] : null,
+)
 const renderedContent = computed(() => renderMarkdown(activeContent.value))
-const renderedRetrospective = computed(() => renderMarkdown(project.value?.retrospective))
+
+// The finalization arc only matters once the release has started or finished.
+const showFinalization = computed(
+  () => Boolean(project.value?.finalRepoUrl) || (project.value?.finalizationPercentage ?? 0) > 0,
+)
+
+// Select the latest phase with content, unless the user picked another one.
+function syncActivePhase() {
+  const latest = lastAvailablePhase.value
+  const activeMissing = !activePhase.value || !hasContent(project.value?.[activePhase.value])
+
+  if (followLatest.value || activeMissing) {
+    activePhase.value = latest
+  }
+}
+
+function selectPhase(value) {
+  followLatest.value = value === lastAvailablePhase.value
+  activePhase.value = value
+}
 
 async function load() {
   if (!Number.isInteger(executionId)) {
@@ -49,6 +92,7 @@ async function load() {
   error.value = null
   try {
     project.value = await getProject(executionId)
+    syncActivePhase()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load the project.'
   } finally {
@@ -59,6 +103,7 @@ async function load() {
 async function refresh() {
   try {
     project.value = await getProject(executionId)
+    syncActivePhase()
   } catch {
     // Keep the previously loaded project if the refresh fails.
   }
@@ -146,9 +191,9 @@ onMounted(load)
       </div>
 
       <template v-else-if="project">
-        <!-- Header: repository icons, editable title, completion ring -->
+        <!-- Header: repository icons, editable title, completion + finalization rings -->
         <div class="app-card rounded-app flex min-w-0 items-center gap-4 p-5">
-          <div class="flex shrink-0 items-center gap-2">
+          <div class="flex shrink-0 flex-row items-center gap-2">
             <GitHubLink
               :url="project.githubUrl"
               :label="`Open the demo repository for ${project.name}`"
@@ -212,50 +257,30 @@ onMounted(load)
           </div>
 
           <span class="inline-flex shrink-0" aria-live="polite" aria-atomic="true">
-            <ProgressRing :value="project.completionPercentage" :size="52" :stroke="5" />
+            <DualProgressRing
+              :primary-value="project.completionPercentage"
+              :secondary-value="showFinalization ? project.finalizationPercentage : null"
+            />
           </span>
         </div>
 
-        <!-- Finalization + Retrospective -->
-        <div class="app-card rounded-app flex min-w-0 flex-col gap-5 p-5 ring-1 ring-brand-secondary/30">
-          <div class="flex items-center justify-between gap-4">
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-brand-textMain">Finalization</p>
-              <p class="text-xs text-brand-textMuted">
-                Release this demo as your own GitHub repository.
-              </p>
-            </div>
-            <FinalizeControl :project="project" labeled />
-          </div>
-
-          <div
-            v-if="project.retrospective"
-            class="flex min-w-0 flex-col gap-3 border-t border-white/5 pt-4"
-          >
-            <div class="flex items-center gap-2">
-              <Sparkles :size="16" class="text-brand-secondary" />
-              <h2 class="text-xs font-bold uppercase tracking-wide text-brand-secondary">
-                Retrospective
-              </h2>
-            </div>
-            <div
-              class="markdown-body min-w-0 max-w-full break-words"
-              v-html="renderedRetrospective"
-            ></div>
-          </div>
-        </div>
-
-        <!-- Documents -->
-        <div class="app-card rounded-app flex min-w-0 flex-col gap-4 p-5">
-          <SegmentedControl v-model="activeTab" :options="TABS" />
+        <!-- Pipeline phases + selected document -->
+        <div class="app-card rounded-app flex min-w-0 flex-col gap-5 p-5">
+          <PhaseStepper
+            :model-value="activePhase"
+            :options="phaseOptions"
+            @update:model-value="selectPhase"
+          />
 
           <div
             v-if="activeContent"
-            class="markdown-body min-w-0 max-w-full break-words"
+            class="markdown-body min-w-0 max-w-full break-words border-t border-white/5 pt-4"
             v-html="renderedContent"
           ></div>
 
-          <p v-else class="py-6 text-center text-sm text-brand-textMuted">No content available.</p>
+          <p v-else class="py-8 text-center text-sm text-brand-textMuted">
+            No documents yet. They will appear here as the pipeline progresses.
+          </p>
         </div>
       </template>
     </div>
