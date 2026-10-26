@@ -52,7 +52,7 @@ class ProjectRepository:
                         q.CREATE_PROJECT,
                         {
                             "name": name,
-                            "github_url": "",
+                            "github_url": f"https://github.com/AgostaGiorgio/demo-incubator/tree/{name}",
                             "user_input": user_input,
                             "auto": auto,
                         },
