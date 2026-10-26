@@ -10,7 +10,7 @@ NFR-3 (T-11)       : CORS restriction + consistent JSON error body.
 
 import pytest
 
-from tests.conftest import CORS_ORIGIN, FakeFinalizeWebhook, app_client, make_project
+from tests.conftest import CORS_ORIGIN, FakeN8NClient, app_client, make_project
 
 
 def test_us1_get_projects_lists_all(fake_repo, broker):
@@ -126,7 +126,8 @@ def test_us4_missing_body_returns_422(fake_repo, broker):
 
 
 def test_create_project_persists_user_input_and_auto(fake_repo, broker):
-    with app_client(fake_repo, broker) as client:
+    n8n = FakeN8NClient(title="Build a todo app")
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post(
             "/api/v1/projects",
             json={"userInput": "# Build a todo app\nWith authentication", "auto": True},
@@ -147,18 +148,50 @@ def test_create_project_persists_user_input_and_auto(fake_repo, broker):
             "auto": True,
         }
     ]
+    assert n8n.title_calls == ["# Build a todo app\nWith authentication"]
+    assert n8n.requirements_calls == [body["id"]]
     assert body["executionId"] in fake_repo.projects
 
 
 def test_create_project_defaults_auto_to_false(fake_repo, broker):
-    with app_client(fake_repo, broker) as client:
+    n8n = FakeN8NClient(title="Generated title")
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects", json={"userInput": "A simple idea"})
         assert response.status_code == 201
         body = response.json()
         assert body["auto"] is False
-        assert body["name"] == "A simple idea"
+        assert body["name"] == "Generated title"
         assert body["userInput"] == "A simple idea"
     assert fake_repo.create_calls[0]["auto"] is False
+    assert n8n.requirements_calls == [body["id"]]
+
+
+def test_create_project_title_webhook_failure_returns_502(fake_repo, broker):
+    n8n = FakeN8NClient(title=None)
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post("/api/v1/projects", json={"userInput": "Some idea"})
+        assert response.status_code == 502
+    assert fake_repo.create_calls == []
+    assert n8n.requirements_calls == []
+
+
+def test_create_project_not_configured_returns_503(fake_repo, broker):
+    n8n = FakeN8NClient(title_configured=False, requirements_configured=False)
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post("/api/v1/projects", json={"userInput": "Some idea"})
+        assert response.status_code == 503
+    assert fake_repo.create_calls == []
+
+
+def test_create_project_requirements_failure_still_creates(fake_repo, broker):
+    n8n = FakeN8NClient(title="Still created", requirements_ok=False)
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post("/api/v1/projects", json={"userInput": "Some idea"})
+        assert response.status_code == 201
+        body = response.json()
+        assert body["name"] == "Still created"
+    assert n8n.requirements_calls == [body["id"]]
+    assert body["executionId"] in fake_repo.projects
 
 
 @pytest.mark.parametrize("user_input", ["", "   ", "\n\n"])
@@ -261,22 +294,22 @@ def test_rename_project_blank_returns_422(fake_repo, broker, name):
 
 def test_finalize_eligible_project_triggers_webhook(fake_repo, broker):
     fake_repo.projects[101] = make_project(101, "Alpha", completion=100)
-    webhook = FakeFinalizeWebhook()
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/101/finalize")
         assert response.status_code == 204
     assert fake_repo.finalize_requests == [101]
-    assert webhook.calls == [101]
+    assert n8n.finalize_calls == [101]
     assert fake_repo.projects[101].finalization_percentage == 1
 
 
 def test_finalize_incomplete_project_returns_409(fake_repo, broker):
     fake_repo.projects[101] = make_project(101, "Alpha", completion=99)
-    webhook = FakeFinalizeWebhook()
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/101/finalize")
         assert response.status_code == 409
-    assert webhook.calls == []
+    assert n8n.finalize_calls == []
     assert fake_repo.finalize_requests == []
 
 
@@ -285,24 +318,24 @@ def test_finalize_already_started_returns_409(fake_repo, broker):
         update={"finalization_percentage": 1}
     )
     fake_repo.projects[101] = project
-    webhook = FakeFinalizeWebhook()
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/101/finalize")
         assert response.status_code == 409
-    assert webhook.calls == []
+    assert n8n.finalize_calls == []
 
 
 def test_finalize_unknown_project_returns_404(fake_repo, broker):
-    webhook = FakeFinalizeWebhook()
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/999/finalize")
         assert response.status_code == 404
 
 
 def test_finalize_webhook_failure_resets_and_returns_503(fake_repo, broker):
     fake_repo.projects[101] = make_project(101, "Alpha", completion=100)
-    webhook = FakeFinalizeWebhook(ok=False)
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient(finalize_ok=False)
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/101/finalize")
         assert response.status_code == 503
     assert fake_repo.projects[101].finalization_percentage == 0
@@ -311,8 +344,8 @@ def test_finalize_webhook_failure_resets_and_returns_503(fake_repo, broker):
 
 def test_finalize_not_configured_returns_503(fake_repo, broker):
     fake_repo.projects[101] = make_project(101, "Alpha", completion=100)
-    webhook = FakeFinalizeWebhook(configured=False)
-    with app_client(fake_repo, broker, webhook) as client:
+    n8n = FakeN8NClient(finalize_configured=False)
+    with app_client(fake_repo, broker, n8n) as client:
         response = client.post("/api/v1/projects/101/finalize")
         assert response.status_code == 503
     assert fake_repo.finalize_requests == [101]

@@ -27,7 +27,7 @@ All REST endpoints are prefixed with `/api/v1`.
 | --- | --- | --- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects (lean payload) |
-| `POST` | `/api/v1/projects` | Create a project from user input + auto flag — 201, returns `ProjectDetail` |
+| `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger — 201 |
 | `GET` | `/api/v1/projects/{executionId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
 | `PATCH` | `/api/v1/projects/{executionId}` | Rename a project (`{ "name": "..." }`) |
 | `POST` | `/api/v1/projects/{executionId}/finalize` | Start finalization (release) — 204 `{ executionId }` |
@@ -69,13 +69,23 @@ The dashboard's **New** action opens a bottom sheet with two inputs:
 - **Auto** (default `false`): tells the external pipeline whether to run every
   step automatically, one after the other.
 
-`POST /api/v1/projects` persists the row and returns the `ProjectDetail`. The
-`name` is derived from the first meaningful line of the user input,
-`github_url` stays empty until the pipeline fills it, and `execution_id` comes
-from the reserved `projects_execution_id_seq` sequence (values `>= 1,000,000`),
-so locally created projects cannot clash with external execution ids. The
-`auto` flag is stored in the `auto BOOLEAN NOT NULL DEFAULT FALSE` column
-(migration `0006`).
+`POST /api/v1/projects` runs three steps:
+
+1. **Title extraction** — POSTs `{"user_input": "..."}` to
+   `N8N_PROJECT_TITLE_WEBHOOK_URL`; the workflow must answer with
+   `{"project_title": "..."}` (trimmed and truncated to 200 chars).
+2. **Insert** — writes the row with that title, the user input, the `auto` flag
+   and an `execution_id` from the reserved `projects_execution_id_seq` sequence
+   (values `>= 1,000,000`), so locally created projects cannot clash with
+   external execution ids. `github_url` stays empty until the pipeline fills it.
+3. **Requirements** — POSTs `{"project_id": "<projects.id UUID>"}` to
+   `N8N_REQUIREMENTS_WEBHOOK_URL`; the `200` response body is ignored.
+
+If the title webhook is not configured or fails, creation is aborted
+(`503` / `502`) and no row is written. If the requirements webhook fails, the
+project is still created (`201`) and the error is only logged, because retrying
+would insert a duplicate row. The `auto` flag is stored in the
+`auto BOOLEAN NOT NULL DEFAULT FALSE` column (migration `0006`).
 
 ### SSE event contract
 
@@ -159,7 +169,9 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 | `ENABLE_PROGRESS_POLLING` | Poll PostgreSQL for externally written progress updates (default `true`) |
 | `POLL_INTERVAL_SECONDS` | Seconds between progress polls (default `2`) |
 | `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
-| `FINALIZE_WEBHOOK_TIMEOUT_SECONDS` | Timeout for the n8n finalize webhook call (default `10`) |
+| `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
+| `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation for a newly created project |
+| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `30`) |
 | `ORBIT_API_URL` | Full Orbit registration endpoint (`https://api.orbit.agogi.dev/api/v1/register`); unset ⇒ Orbit disabled |
 | `APP_URL` | Public URL of this service, shown in Orbit (must be an absolute http(s) URL) |
 

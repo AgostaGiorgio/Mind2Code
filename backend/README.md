@@ -51,6 +51,9 @@ Copy `.env.example` to `.env` and fill in the values:
 | `POSTGRESQL_DATABASE` | PostgreSQL database name |
 | `CORS_ORIGINS` | JSON array of allowed origins, e.g. `["http://localhost:5173"]` |
 | `LOG_LEVEL` | *(optional)* Python logging level (default `INFO`) |
+| `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
+| `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation from the DB project id |
+| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `30`) |
 
 ## Local development
 
@@ -71,7 +74,7 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | --- | --- | --- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects |
-| `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`) |
+| `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{executionId}/progress` | Update completion percentage |
 

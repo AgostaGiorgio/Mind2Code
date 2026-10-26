@@ -29,8 +29,11 @@ export class ProjectApiError extends Error implements ApiError {
 
 function normalizeError(error: unknown): ProjectApiError {
   if (error instanceof AxiosError && error.response) {
-    const data = error.response.data as { error?: { message?: string } } | undefined
-    const message = data?.error?.message ?? error.message
+    const data = error.response.data as
+      | { error?: { message?: string }; detail?: unknown }
+      | undefined
+    const detail = typeof data?.detail === 'string' ? data.detail : undefined
+    const message = data?.error?.message ?? detail ?? error.message
     return new ProjectApiError(error.response.status, message)
   }
   if (error instanceof Error) {
@@ -59,7 +62,11 @@ export async function getProject(executionId: number): Promise<ProjectDetail> {
 
 export async function createProject(payload: CreateProjectPayload): Promise<ProjectDetail> {
   try {
-    const { data } = await apiClient.post<ProjectDetail>('/api/v1/projects', payload)
+    // The backend calls two n8n webhooks synchronously; allow more than the
+    // default 10s client timeout.
+    const { data } = await apiClient.post<ProjectDetail>('/api/v1/projects', payload, {
+      timeout: 90000,
+    })
     return data
   } catch (error) {
     throw normalizeError(error)
@@ -96,7 +103,10 @@ export async function postProgress(
 
 export async function finalizeProject(executionId: number): Promise<void> {
   try {
-    await apiClient.post(`/api/v1/projects/${executionId}/finalize`)
+    // The backend waits on the n8n webhook, which shares the N8N_TIMEOUT_SECONDS timeout.
+    await apiClient.post(`/api/v1/projects/${executionId}/finalize`, null, {
+      timeout: 45000,
+    })
   } catch (error) {
     throw normalizeError(error)
   }

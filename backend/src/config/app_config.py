@@ -40,10 +40,18 @@ class AppConfig(BaseSettings):
         default=None,
         description="n8n webhook URL invoked to start a project finalization",
     )
-    finalize_webhook_timeout_seconds: float = Field(
-        default=10.0,
+    n8n_project_title_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that extracts the project title from the user input",
+    )
+    n8n_requirements_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts requirements generation for a project",
+    )
+    n8n_timeout_seconds: float = Field(
+        default=30.0,
         gt=0,
-        description="Timeout for the n8n finalize webhook call",
+        description="Timeout shared by every n8n webhook call",
     )
 
     app_url: str = "http://localhost:8000"

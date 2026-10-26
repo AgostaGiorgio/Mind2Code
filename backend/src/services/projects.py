@@ -1,7 +1,8 @@
 import logging
+from dataclasses import dataclass
 from enum import Enum
 
-from src.clients.finalize_webhook import FinalizeWebhookClient
+from src.clients.n8n_client import N8NClient
 from src.db.models.project import (
     ProgressEvent,
     ProgressUpdateRequest,
@@ -15,17 +16,6 @@ from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
 
-_NAME_MAX_LENGTH = 200
-
-
-def _derive_project_name(user_input: str) -> str:
-    """Use the first meaningful line of the user input as the project name."""
-    for line in user_input.splitlines():
-        candidate = line.strip().lstrip("#").strip()
-        if candidate:
-            return candidate[:_NAME_MAX_LENGTH]
-    return "Untitled project"
-
 
 class FinalizeResult(str, Enum):
     OK = "ok"
@@ -35,16 +25,29 @@ class FinalizeResult(str, Enum):
     NOT_CONFIGURED = "not_configured"
 
 
+class CreateProjectStatus(str, Enum):
+    CREATED = "created"
+    NOT_CONFIGURED = "not_configured"
+    TITLE_EXTRACTION_FAILED = "title_extraction_failed"
+    PERSIST_FAILED = "persist_failed"
+
+
+@dataclass(frozen=True)
+class CreateProjectOutcome:
+    status: CreateProjectStatus
+    project: ProjectDetail | None = None
+
+
 class ProjectService:
     def __init__(
         self,
         project_repository: ProjectRepository,
         event_broker: EventBroker,
-        finalize_webhook: FinalizeWebhookClient,
+        n8n_client: N8NClient,
     ):
         self.__project_repository = project_repository
         self.__event_broker = event_broker
-        self.__finalize_webhook = finalize_webhook
+        self.__n8n_client = n8n_client
 
     async def list_projects(self) -> list[Project]:
         logger.debug("Fetching projects...")
@@ -54,12 +57,35 @@ class ProjectService:
         logger.debug(f"Fetching project detail for execution_id {execution_id}...")
         return await self.__project_repository.get_project_detail(execution_id)
 
-    async def create_project(self, payload: ProjectCreateRequest) -> ProjectDetail | None:
-        name = _derive_project_name(payload.user_input)
-        logger.debug(f"Creating project '{name}' (auto={payload.auto})...")
-        return await self.__project_repository.create_project(
-            name, payload.user_input, payload.auto
+    async def create_project(self, payload: ProjectCreateRequest) -> CreateProjectOutcome:
+        if not self.__n8n_client.project_title_configured:
+            logger.error("Project title webhook is not configured.")
+            return CreateProjectOutcome(CreateProjectStatus.NOT_CONFIGURED)
+
+        title = await self.__n8n_client.extract_project_title(payload.user_input)
+        if title is None:
+            logger.error("Could not extract the project title from the user input.")
+            return CreateProjectOutcome(CreateProjectStatus.TITLE_EXTRACTION_FAILED)
+
+        logger.debug(f"Creating project '{title}' (auto={payload.auto})...")
+        project = await self.__project_repository.create_project(
+            title, payload.user_input, payload.auto
         )
+        if project is None:
+            return CreateProjectOutcome(CreateProjectStatus.PERSIST_FAILED)
+
+        if not self.__n8n_client.requirements_configured:
+            logger.error(
+                f"Requirements webhook is not configured; project '{project.execution_id}' "
+                "was created without triggering requirements generation."
+            )
+        elif not await self.__n8n_client.trigger_requirements(str(project.id)):
+            logger.error(
+                f"Could not trigger requirements generation for project "
+                f"'{project.execution_id}'."
+            )
+
+        return CreateProjectOutcome(CreateProjectStatus.CREATED, project)
 
     async def rename_project(
         self, execution_id: int, payload: ProjectNameUpdateRequest
@@ -77,13 +103,13 @@ class ProjectService:
             existing = await self.__project_repository.get_project_detail(execution_id)
             return FinalizeResult.CONFLICT if existing else FinalizeResult.NOT_FOUND
 
-        if not self.__finalize_webhook.configured:
+        if not self.__n8n_client.finalize_configured:
             await self.__project_repository.reset_finalization(
                 execution_id, "finalization is not configured"
             )
             return FinalizeResult.NOT_CONFIGURED
 
-        triggered = await self.__finalize_webhook.trigger(execution_id)
+        triggered = await self.__n8n_client.trigger_finalization(execution_id)
         if not triggered:
             await self.__project_repository.reset_finalization(
                 execution_id, "could not reach the finalization workflow"

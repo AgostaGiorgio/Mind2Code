@@ -162,35 +162,57 @@ class FakeProjectRepository:
         return updated
 
 
-class FakeFinalizeWebhook:
-    """Stand-in for :class:`FinalizeWebhookClient`."""
+class FakeN8NClient:
+    """In-memory stand-in for :class:`N8NClient`."""
 
-    def __init__(self, ok: bool = True, configured: bool = True):
-        self.configured = configured
-        self.ok = ok
-        self.calls: list[int] = []
+    def __init__(
+        self,
+        title: str | None = "Generated title",
+        title_configured: bool = True,
+        requirements_ok: bool = True,
+        requirements_configured: bool = True,
+        finalize_ok: bool = True,
+        finalize_configured: bool = True,
+    ):
+        self.title = title
+        self.project_title_configured = title_configured
+        self.requirements_ok = requirements_ok
+        self.requirements_configured = requirements_configured
+        self.finalize_ok = finalize_ok
+        self.finalize_configured = finalize_configured
+        self.title_calls: list[str] = []
+        self.requirements_calls: list[str] = []
+        self.finalize_calls: list[int] = []
 
-    async def trigger(self, execution_id: int) -> bool:
-        self.calls.append(execution_id)
-        return self.ok
+    async def extract_project_title(self, user_input: str) -> str | None:
+        self.title_calls.append(user_input)
+        return self.title
+
+    async def trigger_requirements(self, project_id: str) -> bool:
+        self.requirements_calls.append(project_id)
+        return self.requirements_ok
+
+    async def trigger_finalization(self, execution_id: int) -> bool:
+        self.finalize_calls.append(execution_id)
+        return self.finalize_ok
 
 
 @contextmanager
-def app_client(repo=None, broker=None, webhook=None, raise_server_exceptions=True):
-    """Yield a TestClient with the given repository/broker/webhook wired into the container."""
+def app_client(repo=None, broker=None, n8n_client=None, raise_server_exceptions=True):
+    """Yield a TestClient with the given repository/broker/n8n client wired into the container."""
     if repo is not None:
         container.project_repository.override(providers.Object(repo))
     if broker is not None:
         container.event_broker.override(providers.Object(broker))
-    if webhook is not None:
-        container.finalize_webhook.override(providers.Object(webhook))
+    if n8n_client is not None:
+        container.n8n_client.override(providers.Object(n8n_client))
     try:
         with TestClient(app, raise_server_exceptions=raise_server_exceptions) as client:
             yield client
     finally:
         container.project_repository.reset_override()
         container.event_broker.reset_override()
-        container.finalize_webhook.reset_override()
+        container.n8n_client.reset_override()
 
 
 @pytest.fixture

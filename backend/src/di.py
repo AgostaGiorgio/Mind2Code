@@ -1,6 +1,6 @@
 from dependency_injector import containers, providers
 
-from src.clients.finalize_webhook import FinalizeWebhookClient
+from src.clients.n8n_client import N8NClient
 from src.clients.postgres_client import PostgresClient
 from src.config.app_config import app_config
 from src.repositories.projects import ProjectRepository
@@ -16,10 +16,12 @@ class Container(containers.DeclarativeContainer):
 
     event_broker = providers.Singleton(EventBroker)
 
-    finalize_webhook = providers.Singleton(
-        FinalizeWebhookClient,
-        url=app_config.n8n_finalize_webhook_url,
-        timeout_seconds=app_config.finalize_webhook_timeout_seconds,
+    n8n_client = providers.Singleton(
+        N8NClient,
+        finalize_url=app_config.n8n_finalize_webhook_url,
+        project_title_url=app_config.n8n_project_title_webhook_url,
+        requirements_url=app_config.n8n_requirements_webhook_url,
+        timeout_seconds=app_config.n8n_timeout_seconds,
     )
 
     project_repository = providers.Factory(
@@ -30,7 +32,7 @@ class Container(containers.DeclarativeContainer):
         ProjectService,
         project_repository=project_repository,
         event_broker=event_broker,
-        finalize_webhook=finalize_webhook,
+        n8n_client=n8n_client,
     )
 
     progress_poller = providers.Factory(

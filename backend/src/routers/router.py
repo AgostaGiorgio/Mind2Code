@@ -13,7 +13,7 @@ from src.db.models.project import (
     ProjectNameUpdateRequest,
 )
 from src.di import Container
-from src.services.projects import FinalizeResult, ProjectService
+from src.services.projects import CreateProjectStatus, FinalizeResult, ProjectService
 from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
@@ -35,10 +35,19 @@ async def create_project(
     payload: ProjectCreateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectDetail:
-    created = await project_service.create_project(payload)
-    if created is None:
-        raise HTTPException(status_code=500, detail="Could not create the project.")
-    return created
+    outcome = await project_service.create_project(payload)
+
+    if outcome.status is CreateProjectStatus.CREATED and outcome.project is not None:
+        return outcome.project
+    if outcome.status is CreateProjectStatus.NOT_CONFIGURED:
+        raise HTTPException(
+            status_code=503, detail="Project creation workflow is not configured."
+        )
+    if outcome.status is CreateProjectStatus.TITLE_EXTRACTION_FAILED:
+        raise HTTPException(
+            status_code=502, detail="Could not extract the project title."
+        )
+    raise HTTPException(status_code=500, detail="Could not create the project.")
 
 
 @api_router.get("/{execution_id}", response_model=ProjectDetail, status_code=200)
