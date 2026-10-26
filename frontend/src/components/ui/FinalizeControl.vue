@@ -33,7 +33,7 @@ async function trigger() {
   localError.value = null
   showError.value = false
   try {
-    await finalizeProject(props.project.executionId)
+    await finalizeProject(props.project.id)
   } catch (e) {
     localError.value = e instanceof Error ? e.message : 'Finalization failed.'
     showError.value = true

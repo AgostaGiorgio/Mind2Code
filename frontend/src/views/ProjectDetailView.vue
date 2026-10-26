@@ -13,7 +13,9 @@ import PhaseStepper from '@/components/ui/PhaseStepper.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 
 const route = useRoute()
-const executionId = Number(route.params.executionId)
+const projectId = String(route.params.projectId ?? '')
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const toast = useToast()
 
@@ -83,7 +85,7 @@ function selectPhase(value) {
 }
 
 async function load() {
-  if (!Number.isInteger(executionId)) {
+  if (!UUID_PATTERN.test(projectId)) {
     error.value = 'Invalid project id.'
     loading.value = false
     return
@@ -92,7 +94,7 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    project.value = await getProject(executionId)
+    project.value = await getProject(projectId)
     syncActivePhase()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load the project.'
@@ -103,7 +105,7 @@ async function load() {
 
 async function refresh() {
   try {
-    project.value = await getProject(executionId)
+    project.value = await getProject(projectId)
     syncActivePhase()
   } catch {
     // Keep the previously loaded project if the refresh fails.
@@ -126,7 +128,7 @@ async function saveName() {
 
   saving.value = true
   try {
-    project.value = await updateProjectName(executionId, name)
+    project.value = await updateProjectName(projectId, name)
     editing.value = false
     draftName.value = ''
     toast.success('Project renamed.')
@@ -140,12 +142,12 @@ async function saveName() {
 // Keep the header percentage live and refresh the documents on progress events.
 useSse(
   (event) => {
-    if (!project.value || event.executionId !== executionId) return
+    if (!project.value || event.projectId !== projectId) return
     project.value.completionPercentage = event.completionPercentage
     refresh()
   },
   (event) => {
-    if (!project.value || event.executionId !== executionId) return
+    if (!project.value || event.projectId !== projectId) return
     project.value.finalizationPercentage = event.finalizationPercentage
     project.value.finalRepoUrl = event.finalRepoUrl
     project.value.finalizeError = event.finalizeError

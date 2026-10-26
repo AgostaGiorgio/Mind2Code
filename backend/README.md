@@ -53,7 +53,7 @@ Copy `.env.example` to `.env` and fill in the values:
 | `LOG_LEVEL` | *(optional)* Python logging level (default `INFO`) |
 | `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
 | `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation from the DB project id |
-| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `30`) |
+| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `120`) |
 
 ## Local development
 
@@ -76,12 +76,12 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | `GET` | `/api/v1/projects` | List all projects |
 | `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
-| `POST` | `/api/v1/projects/{executionId}/progress` | Update completion percentage |
+| `POST` | `/api/v1/projects/{projectId}/progress` | Update completion percentage |
 
 ### SSE event contract
 
 - Event type: `progress`
-- Payload: `{"executionId": <int>, "completionPercentage": <int>}`
+- Payload: `{"projectId": "<uuid>", "completionPercentage": <int>}`
 - Heartbeat comment (`: heartbeat`) is sent at least every 15 seconds.
 
 ## Migrations

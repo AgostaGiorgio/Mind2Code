@@ -38,19 +38,19 @@ class N8NClient:
     def requirements_configured(self) -> bool:
         return bool(self.__requirements_url)
 
-    async def trigger_finalization(self, execution_id: int) -> bool:
-        """Start the release workflow. Only the execution id is sent."""
+    async def trigger_finalization(self, project_id: str) -> bool:
+        """Start the release workflow. The DB UUID of the project is sent."""
         if not self.__finalize_url:
             return False
 
         response = await self.__post(
             self.__finalize_url,
-            {"executionId": execution_id},
+            {"project_id": project_id},
         )
         if response is None:
             return False
 
-        logger.info(f"Finalize webhook triggered for execution_id {execution_id}.")
+        logger.info(f"Finalize webhook triggered for project {project_id}.")
         return True
 
     async def extract_project_title(self, user_input: str) -> str | None:

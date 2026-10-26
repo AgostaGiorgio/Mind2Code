@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,18 +27,18 @@ class ProjectRepository:
                 logger.error(f"Error fetching projects: {e}", exc_info=True)
                 return []
 
-    async def get_project_detail(self, execution_id: int) -> ProjectDetail | None:
+    async def get_project_detail(self, project_id: UUID) -> ProjectDetail | None:
         async with self.__postgres_client.async_session() as session:
             try:
                 result = await session.execute(
-                    q.GET_PROJECT_DETAIL, {"execution_id": execution_id}
+                    q.GET_PROJECT_DETAIL, {"project_id": project_id}
                 )
                 row = result.mappings().first()
-                logger.debug(f"Fetched project detail for '{execution_id}'.")
+                logger.debug(f"Fetched project detail for '{project_id}'.")
                 return ProjectDetail(**row) if row else None
             except (SQLAlchemyError, ValidationError) as e:
                 logger.error(
-                    f"Error fetching project detail for '{execution_id}': {e}", exc_info=True
+                    f"Error fetching project detail for '{project_id}': {e}", exc_info=True
                 )
                 return None
 
@@ -60,66 +61,66 @@ class ProjectRepository:
                     if row is None:
                         logger.error("Project creation returned no row.")
                         return None
-                    logger.info(f"Project '{row['execution_id']}' created.")
+                    logger.info(f"Project '{row['id']}' created.")
                     return ProjectDetail(**row)
             except (SQLAlchemyError, ValidationError) as e:
                 logger.error(f"Error creating project: {e}", exc_info=True)
                 return None
 
-    async def update_name(self, execution_id: int, name: str) -> ProjectDetail | None:
+    async def update_name(self, project_id: UUID, name: str) -> ProjectDetail | None:
         async with self.__postgres_client.async_session() as session:
             try:
                 async with session.begin():
                     result = await session.execute(
-                        q.UPDATE_NAME, {"execution_id": execution_id, "name": name}
+                        q.UPDATE_NAME, {"project_id": project_id, "name": name}
                     )
                     row = result.mappings().first()
                     if row is None:
-                        logger.warning(f"Project with execution_id '{execution_id}' not found.")
+                        logger.warning(f"Project with id '{project_id}' not found.")
                         return None
-                    logger.debug(f"Project '{execution_id}' renamed to '{name}'.")
+                    logger.debug(f"Project '{project_id}' renamed to '{name}'.")
                     return ProjectDetail(**row)
             except (SQLAlchemyError, ValidationError) as e:
                 logger.error(
-                    f"Error renaming project '{execution_id}': {e}", exc_info=True
+                    f"Error renaming project '{project_id}': {e}", exc_info=True
                 )
                 return None
 
-    async def request_finalization(self, execution_id: int) -> Project | None:
+    async def request_finalization(self, project_id: UUID) -> Project | None:
         async with self.__postgres_client.async_session() as session:
             try:
                 async with session.begin():
                     result = await session.execute(
-                        q.REQUEST_FINALIZATION, {"execution_id": execution_id}
+                        q.REQUEST_FINALIZATION, {"project_id": project_id}
                     )
                     row = result.mappings().first()
                     if row is None:
                         logger.warning(
-                            f"Finalization not eligible for project '{execution_id}'."
+                            f"Finalization not eligible for project '{project_id}'."
                         )
                         return None
-                    logger.info(f"Finalization requested for project '{execution_id}'.")
+                    logger.info(f"Finalization requested for project '{project_id}'.")
                     return Project(**row)
             except (SQLAlchemyError, ValidationError) as e:
                 logger.error(
-                    f"Error requesting finalization for '{execution_id}': {e}", exc_info=True
+                    f"Error requesting finalization for '{project_id}': {e}", exc_info=True
                 )
                 return None
 
-    async def reset_finalization(self, execution_id: int, finalize_error: str) -> None:
+    async def reset_finalization(self, project_id: UUID, finalize_error: str) -> None:
         async with self.__postgres_client.async_session() as session:
             try:
                 async with session.begin():
                     await session.execute(
                         q.RESET_FINALIZATION,
-                        {"execution_id": execution_id, "finalize_error": finalize_error},
+                        {"project_id": project_id, "finalize_error": finalize_error},
                     )
                     logger.warning(
-                        f"Finalization reset for project '{execution_id}': {finalize_error}"
+                        f"Finalization reset for project '{project_id}': {finalize_error}"
                     )
             except SQLAlchemyError as e:
                 logger.error(
-                    f"Error resetting finalization for '{execution_id}': {e}", exc_info=True
+                    f"Error resetting finalization for '{project_id}': {e}", exc_info=True
                 )
 
     async def get_latest_updated_at(self) -> datetime | None:
@@ -145,25 +146,25 @@ class ProjectRepository:
                 logger.error(f"Error fetching projects updated since {since}: {e}", exc_info=True)
                 return []
 
-    async def update_completion(self, execution_id: int, completion_percentage: int) -> Project | None:
+    async def update_completion(self, project_id: UUID, completion_percentage: int) -> Project | None:
         async with self.__postgres_client.async_session() as session:
             try:
                 async with session.begin():
                     result = await session.execute(
                         q.UPDATE_COMPLETION,
                         {
-                            "execution_id": execution_id,
+                            "project_id": project_id,
                             "completion_percentage": completion_percentage,
                         },
                     )
                     row = result.mappings().first()
                     if row is None:
-                        logger.warning(f"Project with execution_id '{execution_id}' not found.")
+                        logger.warning(f"Project with id '{project_id}' not found.")
                         return None
-                    logger.debug(f"Project '{execution_id}' completion updated to {completion_percentage}%.")
+                    logger.debug(f"Project '{project_id}' completion updated to {completion_percentage}%.")
                     return Project(**row)
             except (SQLAlchemyError, ValidationError) as e:
                 logger.error(
-                    f"Error updating completion for project '{execution_id}': {e}", exc_info=True
+                    f"Error updating completion for project '{project_id}': {e}", exc_info=True
                 )
                 return None

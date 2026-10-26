@@ -8,7 +8,7 @@ for an in-memory fake, so no PostgreSQL instance is required.
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 # Must be set before importing src.* because AppConfig is instantiated at import time.
 os.environ["POSTGRESQL_USER"] = "test"
@@ -33,9 +33,13 @@ from src.sse.broker import EventBroker  # noqa: E402
 
 CORS_ORIGIN = "http://localhost:5173"
 
+PROJECT_A_ID = UUID("11111111-1111-4111-8111-111111111111")
+PROJECT_B_ID = UUID("22222222-2222-4222-8222-222222222222")
+UNKNOWN_PROJECT_ID = UUID("99999999-9999-4999-8999-999999999999")
+
 
 def make_project(
-    execution_id: int,
+    project_id: UUID,
     name: str,
     github_url: str = "https://github.com/me/repo",
     completion: int = 0,
@@ -44,8 +48,7 @@ def make_project(
 ) -> Project:
     now = datetime.now(timezone.utc)
     return Project(
-        id=uuid4(),
-        execution_id=execution_id,
+        id=project_id,
         name=name,
         github_url=github_url,
         completion_percentage=completion,
@@ -58,13 +61,13 @@ class FakeProjectRepository:
     """In-memory stand-in for :class:`ProjectRepository`."""
 
     def __init__(self, projects: list[Project] | None = None):
-        self.projects: dict[int, Project] = {p.execution_id: p for p in (projects or [])}
-        self.details: dict[int, dict] = {}
-        self.update_calls: list[tuple[int, int]] = []
-        self.update_name_calls: list[tuple[int, str]] = []
+        self.projects: dict[UUID, Project] = {p.id: p for p in (projects or [])}
+        self.details: dict[UUID, dict] = {}
+        self.update_calls: list[tuple[UUID, int]] = []
+        self.update_name_calls: list[tuple[UUID, str]] = []
         self.create_calls: list[dict] = []
-        self.finalize_requests: list[int] = []
-        self.finalize_resets: list[tuple[int, str]] = []
+        self.finalize_requests: list[UUID] = []
+        self.finalize_resets: list[tuple[UUID, str]] = []
         self.list_error: Exception | None = None
 
     async def list_projects(self) -> list[Project]:
@@ -72,20 +75,19 @@ class FakeProjectRepository:
             raise self.list_error
         return list(self.projects.values())
 
-    async def get_project_detail(self, execution_id: int) -> ProjectDetail | None:
-        project = self.projects.get(execution_id)
+    async def get_project_detail(self, project_id: UUID) -> ProjectDetail | None:
+        project = self.projects.get(project_id)
         if project is None:
             return None
-        return ProjectDetail(**project.model_dump(), **self.details.get(execution_id, {}))
+        return ProjectDetail(**project.model_dump(), **self.details.get(project_id, {}))
 
     async def create_project(
         self, name: str, user_input: str, auto: bool
     ) -> ProjectDetail | None:
-        execution_id = max(self.projects, default=0) + 1
+        project_id = uuid4()
         now = datetime.now(timezone.utc)
         project = Project(
-            id=uuid4(),
-            execution_id=execution_id,
+            id=project_id,
             name=name,
             github_url="",
             completion_percentage=0,
@@ -93,15 +95,15 @@ class FakeProjectRepository:
             created_at=now,
             updated_at=now,
         )
-        self.projects[execution_id] = project
-        self.details[execution_id] = {"user_input": user_input}
+        self.projects[project_id] = project
+        self.details[project_id] = {"user_input": user_input}
         self.create_calls.append(
             {"name": name, "user_input": user_input, "auto": auto}
         )
-        return ProjectDetail(**project.model_dump(), **self.details[execution_id])
+        return ProjectDetail(**project.model_dump(), **self.details[project_id])
 
-    async def request_finalization(self, execution_id: int) -> Project | None:
-        project = self.projects.get(execution_id)
+    async def request_finalization(self, project_id: UUID) -> Project | None:
+        project = self.projects.get(project_id)
         if project is None:
             return None
         eligible = (
@@ -111,19 +113,19 @@ class FakeProjectRepository:
         )
         if not eligible:
             return None
-        self.finalize_requests.append(execution_id)
+        self.finalize_requests.append(project_id)
         updated = project.model_copy(
             update={"finalization_percentage": 1, "finalize_error": None}
         )
-        self.projects[execution_id] = updated
+        self.projects[project_id] = updated
         return updated
 
-    async def reset_finalization(self, execution_id: int, finalize_error: str) -> None:
-        project = self.projects.get(execution_id)
+    async def reset_finalization(self, project_id: UUID, finalize_error: str) -> None:
+        project = self.projects.get(project_id)
         if project is None:
             return
-        self.finalize_resets.append((execution_id, finalize_error))
-        self.projects[execution_id] = project.model_copy(
+        self.finalize_resets.append((project_id, finalize_error))
+        self.projects[project_id] = project.model_copy(
             update={"finalization_percentage": 0, "finalize_error": finalize_error}
         )
 
@@ -138,17 +140,19 @@ class FakeProjectRepository:
             key=lambda p: p.updated_at,
         )
 
-    async def update_name(self, execution_id: int, name: str) -> ProjectDetail | None:
-        project = self.projects.get(execution_id)
+    async def update_name(self, project_id: UUID, name: str) -> ProjectDetail | None:
+        project = self.projects.get(project_id)
         if project is None:
             return None
-        self.update_name_calls.append((execution_id, name))
+        self.update_name_calls.append((project_id, name))
         updated = project.model_copy(update={"name": name})
-        self.projects[execution_id] = updated
-        return ProjectDetail(**updated.model_dump(), **self.details.get(execution_id, {}))
+        self.projects[project_id] = updated
+        return ProjectDetail(**updated.model_dump(), **self.details.get(project_id, {}))
 
-    async def update_completion(self, execution_id: int, completion_percentage: int) -> Project | None:
-        project = self.projects.get(execution_id)
+    async def update_completion(
+        self, project_id: UUID, completion_percentage: int
+    ) -> Project | None:
+        project = self.projects.get(project_id)
         if project is None:
             return None
         updated = project.model_copy(
@@ -157,8 +161,8 @@ class FakeProjectRepository:
                 "updated_at": datetime.now(timezone.utc),
             }
         )
-        self.projects[execution_id] = updated
-        self.update_calls.append((execution_id, completion_percentage))
+        self.projects[project_id] = updated
+        self.update_calls.append((project_id, completion_percentage))
         return updated
 
 
@@ -182,7 +186,7 @@ class FakeN8NClient:
         self.finalize_configured = finalize_configured
         self.title_calls: list[str] = []
         self.requirements_calls: list[str] = []
-        self.finalize_calls: list[int] = []
+        self.finalize_calls: list[str] = []
 
     async def extract_project_title(self, user_input: str) -> str | None:
         self.title_calls.append(user_input)
@@ -192,8 +196,8 @@ class FakeN8NClient:
         self.requirements_calls.append(project_id)
         return self.requirements_ok
 
-    async def trigger_finalization(self, execution_id: int) -> bool:
-        self.finalize_calls.append(execution_id)
+    async def trigger_finalization(self, project_id: str) -> bool:
+        self.finalize_calls.append(project_id)
         return self.finalize_ok
 
 

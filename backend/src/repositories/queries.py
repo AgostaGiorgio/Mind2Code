@@ -1,7 +1,7 @@
 from sqlalchemy import text
 
 _PROJECT_COLUMNS = """
-id, execution_id, name, github_url, completion_percentage,
+id, name, github_url, completion_percentage,
 finalization_percentage, final_repo_url, finalize_error, auto,
 created_at, updated_at
 """
@@ -13,7 +13,7 @@ ORDER BY created_at DESC
 """)
 
 GET_PROJECT_DETAIL = text("""
-SELECT id, execution_id, name, github_url, completion_percentage,
+SELECT id, name, github_url, completion_percentage,
        finalization_percentage, final_repo_url, finalize_error, auto,
        created_at, updated_at,
        user_input,
@@ -23,13 +23,13 @@ SELECT id, execution_id, name, github_url, completion_percentage,
        review AS final_review,
        retrospective
 FROM projects
-WHERE execution_id = :execution_id
+WHERE id = :project_id
 """)
 
 CREATE_PROJECT = text("""
 INSERT INTO projects (name, github_url, user_input, auto)
 VALUES (:name, :github_url, :user_input, :auto)
-RETURNING id, execution_id, name, github_url, completion_percentage,
+RETURNING id, name, github_url, completion_percentage,
           finalization_percentage, final_repo_url, finalize_error, auto,
           created_at, updated_at,
           user_input,
@@ -44,7 +44,7 @@ UPDATE_COMPLETION = text(f"""
 UPDATE projects
 SET completion_percentage = :completion_percentage,
     updated_at = now()
-WHERE execution_id = :execution_id
+WHERE id = :project_id
 RETURNING {_PROJECT_COLUMNS}
 """)
 
@@ -52,8 +52,8 @@ UPDATE_NAME = text("""
 UPDATE projects
 SET name = :name,
     updated_at = now()
-WHERE execution_id = :execution_id
-RETURNING id, execution_id, name, github_url, completion_percentage,
+WHERE id = :project_id
+RETURNING id, name, github_url, completion_percentage,
           finalization_percentage, final_repo_url, finalize_error, auto,
           created_at, updated_at,
           user_input,
@@ -71,7 +71,7 @@ UPDATE projects
 SET finalization_percentage = 1,
     finalize_error = NULL,
     updated_at = now()
-WHERE execution_id = :execution_id
+WHERE id = :project_id
   AND completion_percentage = 100
   AND finalization_percentage = 0
   AND final_repo_url IS NULL
@@ -84,7 +84,7 @@ UPDATE projects
 SET finalization_percentage = 0,
     finalize_error = :finalize_error,
     updated_at = now()
-WHERE execution_id = :execution_id
+WHERE id = :project_id
 """)
 
 GET_LATEST_UPDATED_AT = text("""

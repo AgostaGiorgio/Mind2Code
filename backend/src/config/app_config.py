@@ -49,7 +49,7 @@ class AppConfig(BaseSettings):
         description="n8n webhook URL that starts requirements generation for a project",
     )
     n8n_timeout_seconds: float = Field(
-        default=30.0,
+        default=120.0,
         gt=0,
         description="Timeout shared by every n8n webhook call",
     )

@@ -72,7 +72,7 @@ def test_app_version_and_routes_registered():
     assert "/health" in paths
     assert "/api/v1/projects" in paths
     assert "/api/v1/events" in paths
-    assert "/api/v1/projects/{execution_id}/progress" in paths
+    assert "/api/v1/projects/{project_id}/progress" in paths
 
 
 def test_container_override_project_repository():

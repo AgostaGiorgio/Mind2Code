@@ -5,7 +5,7 @@ FR-17 (range validation for the update request), T-5.
 """
 
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -20,12 +20,13 @@ from src.db.models.project import (
     ProjectNameUpdateRequest,
 )
 
+PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
+
 
 def _project_kwargs():
     now = datetime.now(timezone.utc)
     return dict(
-        id=uuid4(),
-        execution_id=101,
+        id=PROJECT_ID,
         name="Alpha",
         github_url="https://github.com/me/alpha",
         completion_percentage=40,
@@ -37,7 +38,7 @@ def _project_kwargs():
 def test_project_serializes_to_camel_case():
     project = Project(**_project_kwargs())
     payload = project.model_dump(by_alias=True)
-    assert payload["executionId"] == 101
+    assert payload["id"] == PROJECT_ID
     assert payload["githubUrl"] == "https://github.com/me/alpha"
     assert payload["completionPercentage"] == 40
     # snake_case keys must not leak into the API contract
@@ -48,7 +49,7 @@ def test_project_serializes_to_camel_case():
 
 def test_project_accepts_snake_case_input():
     project = Project(**_project_kwargs())
-    assert project.execution_id == 101
+    assert project.id == PROJECT_ID
     assert project.completion_percentage == 40
 
 
@@ -70,21 +71,23 @@ def test_project_completion_percentage_is_bounded():
 
 
 def test_progress_event_payload_contract():
-    event = ProgressEvent(execution_id=101, completion_percentage=75)
+    event = ProgressEvent(project_id=PROJECT_ID, completion_percentage=75)
     payload = event.model_dump(by_alias=True)
-    assert payload == {"executionId": 101, "completionPercentage": 75}
-    assert event.model_dump_json(by_alias=True) == '{"executionId":101,"completionPercentage":75}'
+    assert payload == {"projectId": PROJECT_ID, "completionPercentage": 75}
+    assert event.model_dump_json(by_alias=True) == (
+        f'{{"projectId":"{PROJECT_ID}","completionPercentage":75}}'
+    )
 
 
 def test_finalization_event_payload_contract():
     event = FinalizationEvent(
-        execution_id=101,
+        project_id=PROJECT_ID,
         finalization_percentage=60,
         final_repo_url=None,
         finalize_error=None,
     )
     assert event.model_dump(by_alias=True) == {
-        "executionId": 101,
+        "projectId": PROJECT_ID,
         "finalizationPercentage": 60,
         "finalRepoUrl": None,
         "finalizeError": None,
@@ -125,7 +128,7 @@ def test_project_detail_payload_contract():
         retrospective="retro",
     )
     payload = detail.model_dump(by_alias=True)
-    assert payload["executionId"] == 101
+    assert payload["id"] == PROJECT_ID
     assert payload["completionPercentage"] == 40
     assert payload["userInput"] == "input"
     assert payload["requirements"] == "req"

@@ -3,7 +3,7 @@ import { getProjects } from '@/services/api'
 import type { FinalizationEvent, ProgressEvent, Project } from '@/types'
 
 interface ProjectsState {
-  projects: Record<number, Project>
+  projects: Record<string, Project>
   loading: boolean
   error: string | null
 }
@@ -14,11 +14,11 @@ const state = reactive<ProjectsState>({
   error: null,
 })
 
-function indexProjects(projects: Project[]): Record<number, Project> {
+function indexProjects(projects: Project[]): Record<string, Project> {
   return projects.reduce((acc, project) => {
-    acc[project.executionId] = project
+    acc[project.id] = project
     return acc
-  }, {} as Record<number, Project>)
+  }, {} as Record<string, Project>)
 }
 
 export function useProjectsStore() {
@@ -36,14 +36,14 @@ export function useProjectsStore() {
   }
 
   const applyProgressEvent = (event: ProgressEvent) => {
-    const project = state.projects[event.executionId]
+    const project = state.projects[event.projectId]
     if (project) {
       project.completionPercentage = event.completionPercentage
     }
   }
 
   const applyFinalizationEvent = (event: FinalizationEvent) => {
-    const project = state.projects[event.executionId]
+    const project = state.projects[event.projectId]
     if (project) {
       project.finalizationPercentage = event.finalizationPercentage
       project.finalRepoUrl = event.finalRepoUrl

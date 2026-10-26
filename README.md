@@ -28,11 +28,14 @@ All REST endpoints are prefixed with `/api/v1`.
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects (lean payload) |
 | `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger — 201 |
-| `GET` | `/api/v1/projects/{executionId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
-| `PATCH` | `/api/v1/projects/{executionId}` | Rename a project (`{ "name": "..." }`) |
-| `POST` | `/api/v1/projects/{executionId}/finalize` | Start finalization (release) — 204 `{ executionId }` |
+| `GET` | `/api/v1/projects/{projectId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
+| `PATCH` | `/api/v1/projects/{projectId}` | Rename a project (`{ "name": "..." }`) |
+| `POST` | `/api/v1/projects/{projectId}/finalize` | Start finalization (release) — 204 |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
-| `POST` | `/api/v1/projects/{executionId}/progress` | Update a project's completion percentage |
+| `POST` | `/api/v1/projects/{projectId}/progress` | Update a project's completion percentage |
+
+Project identifiers are the UUIDs in `projects.id` (migration `0007` removed the
+old integer `execution_id`).
 
 ### Project list and detail page
 
@@ -40,10 +43,10 @@ The dashboard renders a **single card containing one row per project** (name,
 GitHub icon, and a **Status** column with the completion ring next to the
 finalization control — a rocket to release, an orange ring while in progress, or
 a warning icon on error). Clicking anywhere on a row (except the GitHub icon and
-the finalize control) navigates to `/projects/{executionId}`; the chevron is the
+the finalize control) navigates to `/projects/{projectId}`; the chevron is the
 keyboard-accessible target.
 
-The detail page fetches the project with `GET /api/v1/projects/{executionId}` and
+The detail page fetches the project with `GET /api/v1/projects/{projectId}` and
 shows its header plus a **pipeline bar** with one step per phase, in order:
 **User Input → Requirements → Code → Tests → Review → Retrospective**. Each step
 has a dot that turns green when its document has content and is disabled
@@ -74,10 +77,9 @@ The dashboard's **New** action opens a bottom sheet with two inputs:
 1. **Title extraction** — POSTs `{"user_input": "..."}` to
    `N8N_PROJECT_TITLE_WEBHOOK_URL`; the workflow must answer with
    `{"project_title": "..."}` (trimmed and truncated to 200 chars).
-2. **Insert** — writes the row with that title, the user input, the `auto` flag
-   and an `execution_id` from the reserved `projects_execution_id_seq` sequence
-   (values `>= 1,000,000`), so locally created projects cannot clash with
-   external execution ids. `github_url` stays empty until the pipeline fills it.
+2. **Insert** — writes the row with that title, the user input and the `auto`
+   flag; the database generates the row UUID (`projects.id`), which becomes the
+   only project identifier. `github_url` stays empty until the pipeline fills it.
 3. **Requirements** — POSTs `{"project_id": "<projects.id UUID>"}` to
    `N8N_REQUIREMENTS_WEBHOOK_URL`; the `200` response body is ignored.
 
@@ -86,6 +88,11 @@ If the title webhook is not configured or fails, creation is aborted
 project is still created (`201`) and the error is only logged, because retrying
 would insert a duplicate row. The `auto` flag is stored in the
 `auto BOOLEAN NOT NULL DEFAULT FALSE` column (migration `0006`).
+
+The UI navigates immediately to `/projects/new`, which renders a detail-page
+skeleton (header, phase bar and document placeholders) while the title webhook
+runs. On success the route is replaced with `/projects/{projectId}`; on
+failure the page shows the error with **Retry** and **Back to projects**.
 
 ### SSE event contract
 
@@ -97,7 +104,7 @@ would insert a duplicate row. The `auto` flag is stored in the
 
 ```json
 {
-  "executionId": 101,
+  "projectId": "11111111-1111-4111-8111-111111111111",
   "completionPercentage": 75
 }
 ```
@@ -106,7 +113,7 @@ would insert a duplicate row. The `auto` flag is stored in the
 
 ```json
 {
-  "executionId": 101,
+  "projectId": "11111111-1111-4111-8111-111111111111",
   "finalizationPercentage": 60,
   "finalRepoUrl": null,
   "finalizeError": null
@@ -125,11 +132,11 @@ Completion updates can reach the backend in two ways:
    `POLL_INTERVAL_SECONDS` seconds and broadcasts the matching `progress` events
    to all connected SSE clients. The backend is therefore no longer required to
    be the writer in order to stream updates.
-2. **HTTP API.** `POST /api/v1/projects/{executionId}/progress` still persists the
+2. **HTTP API.** `POST /api/v1/projects/{projectId}/progress` still persists the
    update and broadcasts immediately.
 
 Because the polling path and the API path can observe the same row change, the
-SSE broker collapses consecutive identical values for a given `executionId` and
+SSE broker collapses consecutive identical values for a given `projectId` and
 event type, so clients receive exactly one event per actual change.
 
 ### Finalization
@@ -143,9 +150,10 @@ Flow:
 
 1. The UI shows a **Finalize** action only when the project is 100% complete
    (a rocket in the dashboard).
-2. `POST /api/v1/projects/{executionId}/finalize` validates eligibility (409 if not
+2. `POST /api/v1/projects/{projectId}/finalize` validates eligibility (409 if not
    complete, already finalizing or already finalized), atomically sets
-   `finalization_percentage = 1` and calls the n8n webhook → `204`.
+   `finalization_percentage = 1` and calls the n8n webhook with
+   `{"project_id": "<projects.id UUID>"}` → `204`.
 3. n8n performs the work (create repo, single-commit push) and writes the
    progress back to PostgreSQL, bumping `updated_at` at each step.
 4. The poller observes the changes and streams `finalization` events over the
@@ -171,7 +179,7 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 | `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
 | `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
 | `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation for a newly created project |
-| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `30`) |
+| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `120`) |
 | `ORBIT_API_URL` | Full Orbit registration endpoint (`https://api.orbit.agogi.dev/api/v1/register`); unset ⇒ Orbit disabled |
 | `APP_URL` | Public URL of this service, shown in Orbit (must be an absolute http(s) URL) |
 

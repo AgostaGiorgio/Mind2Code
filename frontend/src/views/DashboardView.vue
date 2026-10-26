@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronRight, FolderOpen, Plus, RefreshCw } from '@lucide/vue'
 import { useProjectsStore } from '@/stores/projects'
+import { useProjectCreation } from '@/composables/useProjectCreation'
 import { isSafeGitHubUrl } from '@/utils/github'
 import GitHubLink from '@/components/ui/GitHubLink.vue'
 import ProgressRing from '@/components/ui/ProgressRing.vue'
@@ -16,15 +17,16 @@ const { state, list, hasProjects } = store
 
 const router = useRouter()
 const createOpen = ref(false)
+const projectCreation = useProjectCreation()
 
-function goToDetail(executionId) {
-  router.push(`/projects/${executionId}`)
+function goToDetail(projectId) {
+  router.push(`/projects/${projectId}`)
 }
 
-function handleCreated(project) {
+function handleCreate(payload) {
   createOpen.value = false
-  store.load()
-  router.push(`/projects/${project.executionId}`)
+  projectCreation.start(payload)
+  router.push('/projects/new')
 }
 
 onMounted(() => {
@@ -106,9 +108,9 @@ onMounted(() => {
           <tbody>
             <tr
               v-for="project in list"
-              :key="project.executionId"
+              :key="project.id"
               class="cursor-pointer border-t border-white/5 transition-colors hover:bg-brand-surface/40"
-              @click="goToDetail(project.executionId)"
+              @click="goToDetail(project.id)"
             >
               <td class="px-2 py-3">
                 <div class="flex items-center gap-3">
@@ -141,7 +143,7 @@ onMounted(() => {
 
               <td class="px-2 py-3 text-right">
                 <RouterLink
-                  :to="`/projects/${project.executionId}`"
+                  :to="`/projects/${project.id}`"
                   class="inline-flex h-10 w-10 items-center justify-center rounded-full text-brand-textMuted transition-colors hover:bg-brand-surface/60 hover:text-brand-textMain"
                   :aria-label="`View details for ${project.name}`"
                   @click.stop
@@ -158,7 +160,7 @@ onMounted(() => {
     <CreateProjectSheet
       :open="createOpen"
       @close="createOpen = false"
-      @created="handleCreated"
+      @create="handleCreate"
     />
   </main>
 </template>

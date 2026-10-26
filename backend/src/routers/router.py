@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -50,38 +51,38 @@ async def create_project(
     raise HTTPException(status_code=500, detail="Could not create the project.")
 
 
-@api_router.get("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@api_router.get("/{project_id}", response_model=ProjectDetail, status_code=200)
 @inject
 async def get_project_detail(
-    execution_id: int,
+    project_id: UUID,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectDetail:
-    project = await project_service.get_project_detail(execution_id)
+    project = await project_service.get_project_detail(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return project
 
 
-@api_router.patch("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@api_router.patch("/{project_id}", response_model=ProjectDetail, status_code=200)
 @inject
 async def rename_project(
-    execution_id: int,
+    project_id: UUID,
     payload: ProjectNameUpdateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectDetail:
-    updated = await project_service.rename_project(execution_id, payload)
+    updated = await project_service.rename_project(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return updated
 
 
-@api_router.post("/{execution_id}/finalize", status_code=204)
+@api_router.post("/{project_id}/finalize", status_code=204)
 @inject
 async def finalize_project(
-    execution_id: int,
+    project_id: UUID,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> Response:
-    result = await project_service.finalize_project(execution_id)
+    result = await project_service.finalize_project(project_id)
 
     if result is FinalizeResult.OK:
         return Response(status_code=204)
@@ -94,14 +95,14 @@ async def finalize_project(
     raise HTTPException(status_code=503, detail="Could not start the finalization workflow.")
 
 
-@api_router.post("/{execution_id}/progress", response_model=Project, status_code=200)
+@api_router.post("/{project_id}/progress", response_model=Project, status_code=200)
 @inject
 async def update_progress(
-    execution_id: int,
+    project_id: UUID,
     payload: ProgressUpdateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> Project:
-    updated = await project_service.update_progress(execution_id, payload)
+    updated = await project_service.update_progress(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return updated

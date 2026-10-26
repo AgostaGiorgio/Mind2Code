@@ -1,6 +1,5 @@
 export interface Project {
   id: string
-  executionId: number
   name: string
   githubUrl: string
   completionPercentage: number
@@ -22,12 +21,12 @@ export interface ProjectDetail extends Project {
 }
 
 export interface ProgressEvent {
-  executionId: number
+  projectId: string
   completionPercentage: number
 }
 
 export interface FinalizationEvent {
-  executionId: number
+  projectId: string
   finalizationPercentage: number
   finalRepoUrl: string | null
   finalizeError: string | null

@@ -10,7 +10,12 @@ const router = createRouter({
       component: DashboardView,
     },
     {
-      path: '/projects/:executionId',
+      path: '/projects/new',
+      name: 'project-creating',
+      component: () => import('@/views/ProjectCreatingView.vue'),
+    },
+    {
+      path: '/projects/:projectId',
       name: 'project-detail',
       component: () => import('@/views/ProjectDetailView.vue'),
     },
