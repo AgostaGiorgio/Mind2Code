@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from src.db.models.project import (
     ProgressUpdateRequest,
     Project,
+    ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
 )
@@ -26,6 +27,18 @@ async def get_projects(
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> list[Project]:
     return await project_service.list_projects()
+
+
+@api_router.post("", response_model=ProjectDetail, status_code=201)
+@inject
+async def create_project(
+    payload: ProjectCreateRequest,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    created = await project_service.create_project(payload)
+    if created is None:
+        raise HTTPException(status_code=500, detail="Could not create the project.")
+    return created
 
 
 @api_router.get("/{execution_id}", response_model=ProjectDetail, status_code=200)

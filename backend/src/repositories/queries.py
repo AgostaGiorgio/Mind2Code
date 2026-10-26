@@ -2,7 +2,7 @@ from sqlalchemy import text
 
 _PROJECT_COLUMNS = """
 id, execution_id, name, github_url, completion_percentage,
-finalization_percentage, final_repo_url, finalize_error,
+finalization_percentage, final_repo_url, finalize_error, auto,
 created_at, updated_at
 """
 
@@ -14,7 +14,7 @@ ORDER BY created_at DESC
 
 GET_PROJECT_DETAIL = text("""
 SELECT id, execution_id, name, github_url, completion_percentage,
-       finalization_percentage, final_repo_url, finalize_error,
+       finalization_percentage, final_repo_url, finalize_error, auto,
        created_at, updated_at,
        user_input,
        requirements,
@@ -24,6 +24,20 @@ SELECT id, execution_id, name, github_url, completion_percentage,
        retrospective
 FROM projects
 WHERE execution_id = :execution_id
+""")
+
+CREATE_PROJECT = text("""
+INSERT INTO projects (name, github_url, user_input, auto)
+VALUES (:name, :github_url, :user_input, :auto)
+RETURNING id, execution_id, name, github_url, completion_percentage,
+          finalization_percentage, final_repo_url, finalize_error, auto,
+          created_at, updated_at,
+          user_input,
+          requirements,
+          "code-summary" AS code_summary,
+          "test-summary" AS test_summary,
+          review AS final_review,
+          retrospective
 """)
 
 UPDATE_COMPLETION = text(f"""
@@ -40,7 +54,7 @@ SET name = :name,
     updated_at = now()
 WHERE execution_id = :execution_id
 RETURNING id, execution_id, name, github_url, completion_percentage,
-          finalization_percentage, final_repo_url, finalize_error,
+          finalization_percentage, final_repo_url, finalize_error, auto,
           created_at, updated_at,
           user_input,
           requirements,

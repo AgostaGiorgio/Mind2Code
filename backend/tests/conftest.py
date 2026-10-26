@@ -62,6 +62,7 @@ class FakeProjectRepository:
         self.details: dict[int, dict] = {}
         self.update_calls: list[tuple[int, int]] = []
         self.update_name_calls: list[tuple[int, str]] = []
+        self.create_calls: list[dict] = []
         self.finalize_requests: list[int] = []
         self.finalize_resets: list[tuple[int, str]] = []
         self.list_error: Exception | None = None
@@ -76,6 +77,28 @@ class FakeProjectRepository:
         if project is None:
             return None
         return ProjectDetail(**project.model_dump(), **self.details.get(execution_id, {}))
+
+    async def create_project(
+        self, name: str, user_input: str, auto: bool
+    ) -> ProjectDetail | None:
+        execution_id = max(self.projects, default=0) + 1
+        now = datetime.now(timezone.utc)
+        project = Project(
+            id=uuid4(),
+            execution_id=execution_id,
+            name=name,
+            github_url="",
+            completion_percentage=0,
+            auto=auto,
+            created_at=now,
+            updated_at=now,
+        )
+        self.projects[execution_id] = project
+        self.details[execution_id] = {"user_input": user_input}
+        self.create_calls.append(
+            {"name": name, "user_input": user_input, "auto": auto}
+        )
+        return ProjectDetail(**project.model_dump(), **self.details[execution_id])
 
     async def request_finalization(self, execution_id: int) -> Project | None:
         project = self.projects.get(execution_id)

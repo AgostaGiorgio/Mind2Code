@@ -15,6 +15,7 @@ from src.db.models.project import (
     ProgressEvent,
     ProgressUpdateRequest,
     Project,
+    ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
 )
@@ -42,6 +43,7 @@ def test_project_serializes_to_camel_case():
     # snake_case keys must not leak into the API contract
     assert "execution_id" not in payload
     assert "github_url" not in payload
+    assert payload["auto"] is False
 
 
 def test_project_accepts_snake_case_input():
@@ -97,6 +99,19 @@ def test_project_name_update_request_strips_whitespace():
 def test_project_name_update_request_rejects_blank(value):
     with pytest.raises(ValidationError):
         ProjectNameUpdateRequest(name=value)
+
+
+def test_project_create_request_strips_input_and_defaults_auto():
+    request = ProjectCreateRequest(userInput="  Build me  ")
+    assert request.user_input == "Build me"
+    assert request.auto is False
+    assert ProjectCreateRequest(userInput="X", auto=True).auto is True
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_project_create_request_rejects_blank_input(value):
+    with pytest.raises(ValidationError):
+        ProjectCreateRequest(userInput=value)
 
 
 def test_project_detail_payload_contract():

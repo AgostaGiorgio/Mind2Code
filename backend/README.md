@@ -71,6 +71,7 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | --- | --- | --- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects |
+| `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`) |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{executionId}/progress` | Update completion percentage |
 

@@ -41,6 +41,31 @@ class ProjectRepository:
                 )
                 return None
 
+    async def create_project(
+        self, name: str, user_input: str, auto: bool
+    ) -> ProjectDetail | None:
+        async with self.__postgres_client.async_session() as session:
+            try:
+                async with session.begin():
+                    result = await session.execute(
+                        q.CREATE_PROJECT,
+                        {
+                            "name": name,
+                            "github_url": "",
+                            "user_input": user_input,
+                            "auto": auto,
+                        },
+                    )
+                    row = result.mappings().first()
+                    if row is None:
+                        logger.error("Project creation returned no row.")
+                        return None
+                    logger.info(f"Project '{row['execution_id']}' created.")
+                    return ProjectDetail(**row)
+            except (SQLAlchemyError, ValidationError) as e:
+                logger.error(f"Error creating project: {e}", exc_info=True)
+                return None
+
     async def update_name(self, execution_id: int, name: str) -> ProjectDetail | None:
         async with self.__postgres_client.async_session() as session:
             try:

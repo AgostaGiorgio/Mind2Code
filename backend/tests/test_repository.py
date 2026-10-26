@@ -163,6 +163,27 @@ def test_reset_finalization_executes_update():
     assert session.executed[0][1] == {"execution_id": 101, "finalize_error": "boom"}
 
 
+def test_create_project_returns_detail_and_passes_params():
+    row = {**_row(101, "Build me", 0), "auto": True, "user_input": "Build me"}
+    repo, session = _repo(rows=[row])
+    detail = asyncio.run(repo.create_project("Build me", "Build me", True))
+    assert detail is not None
+    assert detail.execution_id == 101
+    assert detail.auto is True
+    assert detail.user_input == "Build me"
+    assert session.executed[0][1] == {
+        "name": "Build me",
+        "github_url": "",
+        "user_input": "Build me",
+        "auto": True,
+    }
+
+
+def test_create_project_error_returns_none():
+    repo, _ = _repo(error=SQLAlchemyError("boom"))
+    assert asyncio.run(repo.create_project("Build me", "Build me", False)) is None
+
+
 def test_update_name_returns_updated_detail_and_passes_params():
     repo, session = _repo(rows=[{**_row(101, "Renamed", 40), **_documents()}])
     detail = asyncio.run(repo.update_name(101, "Renamed"))

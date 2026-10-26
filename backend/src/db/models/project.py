@@ -26,6 +26,10 @@ class Project(BaseModel):
     finalization_percentage: int = Field(
         0, ge=0, le=100, description="Finalization progress from 0 to 100"
     )
+    auto: bool = Field(
+        False,
+        description="Whether every pipeline step should run automatically, one after another",
+    )
     final_repo_url: str | None = Field(
         None, description="URL of the finalized (real) repository, once released"
     )
@@ -68,6 +72,32 @@ class ProjectNameUpdateRequest(BaseModel):
         stripped = value.strip()
         if not stripped:
             raise ValueError("name must not be blank")
+        return stripped
+
+
+class ProjectCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+    )
+
+    user_input: str = Field(
+        ...,
+        min_length=1,
+        max_length=100_000,
+        description="Free-form description of what the user wants to build",
+    )
+    auto: bool = Field(
+        False,
+        description="Whether every pipeline step should run automatically, one after another",
+    )
+
+    @field_validator("user_input")
+    @classmethod
+    def _validate_user_input(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("userInput must not be blank")
         return stripped
 
 

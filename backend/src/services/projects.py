@@ -6,6 +6,7 @@ from src.db.models.project import (
     ProgressEvent,
     ProgressUpdateRequest,
     Project,
+    ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
 )
@@ -13,6 +14,17 @@ from src.repositories.projects import ProjectRepository
 from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
+
+_NAME_MAX_LENGTH = 200
+
+
+def _derive_project_name(user_input: str) -> str:
+    """Use the first meaningful line of the user input as the project name."""
+    for line in user_input.splitlines():
+        candidate = line.strip().lstrip("#").strip()
+        if candidate:
+            return candidate[:_NAME_MAX_LENGTH]
+    return "Untitled project"
 
 
 class FinalizeResult(str, Enum):
@@ -41,6 +53,13 @@ class ProjectService:
     async def get_project_detail(self, execution_id: int) -> ProjectDetail | None:
         logger.debug(f"Fetching project detail for execution_id {execution_id}...")
         return await self.__project_repository.get_project_detail(execution_id)
+
+    async def create_project(self, payload: ProjectCreateRequest) -> ProjectDetail | None:
+        name = _derive_project_name(payload.user_input)
+        logger.debug(f"Creating project '{name}' (auto={payload.auto})...")
+        return await self.__project_repository.create_project(
+            name, payload.user_input, payload.auto
+        )
 
     async def rename_project(
         self, execution_id: int, payload: ProjectNameUpdateRequest

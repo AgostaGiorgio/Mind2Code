@@ -27,6 +27,7 @@ All REST endpoints are prefixed with `/api/v1`.
 | --- | --- | --- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects (lean payload) |
+| `POST` | `/api/v1/projects` | Create a project from user input + auto flag — 201, returns `ProjectDetail` |
 | `GET` | `/api/v1/projects/{executionId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
 | `PATCH` | `/api/v1/projects/{executionId}` | Rename a project (`{ "name": "..." }`) |
 | `POST` | `/api/v1/projects/{executionId}/finalize` | Start finalization (release) — 204 `{ executionId }` |
@@ -51,12 +52,30 @@ the last available phase is selected, and it keeps following new phases as they
 arrive over SSE until the user picks an earlier one. The header shows a single
 ring with the completion (violet, outer arc) and, once the release has started or
 finished, the finalization (orange, inner arc) percentages — no numbers inside.
+Projects created with `auto = true` also show an **Auto** badge next to the
+title.
 The project name can be edited inline from the detail page header. The document
 `TEXT` columns
 (`user_input`, `requirements`, `code-summary`, `test-summary`, `review`,
 `retrospective`) live on the `projects` table (migrations `0002`, `0003` and
 `0005`) and are populated by the external service, like the completion
 percentage.
+
+### Creating a project
+
+The dashboard's **New** action opens a bottom sheet with two inputs:
+
+- **User input** (required): the free-form brief used by the pipeline.
+- **Auto** (default `false`): tells the external pipeline whether to run every
+  step automatically, one after the other.
+
+`POST /api/v1/projects` persists the row and returns the `ProjectDetail`. The
+`name` is derived from the first meaningful line of the user input,
+`github_url` stays empty until the pipeline fills it, and `execution_id` comes
+from the reserved `projects_execution_id_seq` sequence (values `>= 1,000,000`),
+so locally created projects cannot clash with external execution ids. The
+`auto` flag is stored in the `auto BOOLEAN NOT NULL DEFAULT FALSE` column
+(migration `0006`).
 
 ### SSE event contract
 

@@ -121,6 +121,62 @@ def test_us4_missing_body_returns_422(fake_repo, broker):
 
 
 # --------------------------------------------------------------------------- #
+# Create project
+# --------------------------------------------------------------------------- #
+
+
+def test_create_project_persists_user_input_and_auto(fake_repo, broker):
+    with app_client(fake_repo, broker) as client:
+        response = client.post(
+            "/api/v1/projects",
+            json={"userInput": "# Build a todo app\nWith authentication", "auto": True},
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["name"] == "Build a todo app"
+        assert body["auto"] is True
+        assert body["userInput"] == "# Build a todo app\nWith authentication"
+        assert body["githubUrl"] == ""
+        assert body["completionPercentage"] == 0
+        assert body["finalizationPercentage"] == 0
+        assert body["requirements"] is None
+    assert fake_repo.create_calls == [
+        {
+            "name": "Build a todo app",
+            "user_input": "# Build a todo app\nWith authentication",
+            "auto": True,
+        }
+    ]
+    assert body["executionId"] in fake_repo.projects
+
+
+def test_create_project_defaults_auto_to_false(fake_repo, broker):
+    with app_client(fake_repo, broker) as client:
+        response = client.post("/api/v1/projects", json={"userInput": "A simple idea"})
+        assert response.status_code == 201
+        body = response.json()
+        assert body["auto"] is False
+        assert body["name"] == "A simple idea"
+        assert body["userInput"] == "A simple idea"
+    assert fake_repo.create_calls[0]["auto"] is False
+
+
+@pytest.mark.parametrize("user_input", ["", "   ", "\n\n"])
+def test_create_project_blank_input_returns_422(fake_repo, broker, user_input):
+    with app_client(fake_repo, broker) as client:
+        response = client.post("/api/v1/projects", json={"userInput": user_input})
+        assert response.status_code == 422
+    assert fake_repo.create_calls == []
+
+
+def test_create_project_missing_user_input_returns_422(fake_repo, broker):
+    with app_client(fake_repo, broker) as client:
+        response = client.post("/api/v1/projects", json={"auto": True})
+        assert response.status_code == 422
+    assert fake_repo.create_calls == []
+
+
+# --------------------------------------------------------------------------- #
 # Single project detail (data + Markdown documents)
 # --------------------------------------------------------------------------- #
 

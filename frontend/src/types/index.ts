@@ -5,6 +5,7 @@ export interface Project {
   githubUrl: string
   completionPercentage: number
   finalizationPercentage: number
+  auto: boolean
   finalRepoUrl: string | null
   finalizeError: string | null
   createdAt: string
@@ -34,6 +35,11 @@ export interface FinalizationEvent {
 
 export interface ProgressUpdatePayload {
   completionPercentage: number
+}
+
+export interface CreateProjectPayload {
+  userInput: string
+  auto: boolean
 }
 
 export interface ApiError {

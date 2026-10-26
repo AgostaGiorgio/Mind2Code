@@ -6,6 +6,7 @@ import { getProject, updateProjectName } from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
 import { useSse } from '@/composables/useSse'
 import { useToast } from '@/composables/useToast'
+import Badge from '@/components/ui/Badge.vue'
 import DualProgressRing from '@/components/ui/DualProgressRing.vue'
 import GitHubLink from '@/components/ui/GitHubLink.vue'
 import PhaseStepper from '@/components/ui/PhaseStepper.vue'
@@ -212,6 +213,7 @@ onMounted(load)
               >
                 {{ project.name }}
               </h1>
+              <Badge v-if="project.auto" color="#34d399" dot class="shrink-0">Auto</Badge>
               <button
                 type="button"
                 class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-brand-textMuted transition-colors hover:bg-brand-surface/60 hover:text-brand-textMain"

@@ -1,6 +1,7 @@
 import axios, { AxiosError, type AxiosInstance } from 'axios'
 import type {
   ApiError,
+  CreateProjectPayload,
   FinalizationEvent,
   ProgressEvent,
   Project,
@@ -50,6 +51,15 @@ export async function getProjects(): Promise<Project[]> {
 export async function getProject(executionId: number): Promise<ProjectDetail> {
   try {
     const { data } = await apiClient.get<ProjectDetail>(`/api/v1/projects/${executionId}`)
+    return data
+  } catch (error) {
+    throw normalizeError(error)
+  }
+}
+
+export async function createProject(payload: CreateProjectPayload): Promise<ProjectDetail> {
+  try {
+    const { data } = await apiClient.post<ProjectDetail>('/api/v1/projects', payload)
     return data
   } catch (error) {
     throw normalizeError(error)
