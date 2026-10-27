@@ -1,3 +1,16 @@
+export type ProjectStatus =
+  | 'ERROR'
+  | 'REQUIREMENTS_RUNNING'
+  | 'REQUIREMENTS_DONE'
+  | 'CODE_RUNNING'
+  | 'CODE_DONE'
+  | 'TEST_RUNNING'
+  | 'TEST_DONE'
+  | 'REVIEW_RUNNING'
+  | 'REVIEW_DONE'
+  | 'RETROSPECTIVE_RUNNING'
+  | 'RETROSPECTIVE_DONE'
+
 export interface Project {
   id: string
   name: string
@@ -5,6 +18,7 @@ export interface Project {
   completionPercentage: number
   finalizationPercentage: number
   auto: boolean
+  status: ProjectStatus | null
   finalRepoUrl: string | null
   finalizeError: string | null
   createdAt: string
@@ -23,6 +37,7 @@ export interface ProjectDetail extends Project {
 export interface ProgressEvent {
   projectId: string
   completionPercentage: number
+  status: ProjectStatus | null
 }
 
 export interface FinalizationEvent {

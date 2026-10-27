@@ -2,7 +2,7 @@ from sqlalchemy import text
 
 _PROJECT_COLUMNS = """
 id, name, github_url, completion_percentage,
-finalization_percentage, final_repo_url, finalize_error, auto,
+finalization_percentage, final_repo_url, finalize_error, auto, status,
 created_at, updated_at
 """
 
@@ -14,7 +14,7 @@ ORDER BY created_at DESC
 
 GET_PROJECT_DETAIL = text("""
 SELECT id, name, github_url, completion_percentage,
-       finalization_percentage, final_repo_url, finalize_error, auto,
+       finalization_percentage, final_repo_url, finalize_error, auto, status,
        created_at, updated_at,
        user_input,
        requirements,
@@ -30,7 +30,7 @@ CREATE_PROJECT = text("""
 INSERT INTO projects (name, github_url, user_input, auto)
 VALUES (:name, :github_url, :user_input, :auto)
 RETURNING id, name, github_url, completion_percentage,
-          finalization_percentage, final_repo_url, finalize_error, auto,
+          finalization_percentage, final_repo_url, finalize_error, auto, status,
           created_at, updated_at,
           user_input,
           requirements,
@@ -54,7 +54,7 @@ SET name = :name,
     updated_at = now()
 WHERE id = :project_id
 RETURNING id, name, github_url, completion_percentage,
-          finalization_percentage, final_repo_url, finalize_error, auto,
+          finalization_percentage, final_repo_url, finalize_error, auto, status,
           created_at, updated_at,
           user_input,
           requirements,

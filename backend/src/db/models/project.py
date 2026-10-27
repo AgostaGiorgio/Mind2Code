@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -7,6 +8,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 def _to_camel(name: str) -> str:
     parts = name.split("_")
     return parts[0] + "".join(part.capitalize() for part in parts[1:])
+
+
+class ProjectStatus(str, Enum):
+    ERROR = "ERROR"
+    REQUIREMENTS_RUNNING = "REQUIREMENTS_RUNNING"
+    REQUIREMENTS_DONE = "REQUIREMENTS_DONE"
+    CODE_RUNNING = "CODE_RUNNING"
+    CODE_DONE = "CODE_DONE"
+    TEST_RUNNING = "TEST_RUNNING"
+    TEST_DONE = "TEST_DONE"
+    REVIEW_RUNNING = "REVIEW_RUNNING"
+    REVIEW_DONE = "REVIEW_DONE"
+    RETROSPECTIVE_RUNNING = "RETROSPECTIVE_RUNNING"
+    RETROSPECTIVE_DONE = "RETROSPECTIVE_DONE"
 
 
 class Project(BaseModel):
@@ -28,6 +43,10 @@ class Project(BaseModel):
     auto: bool = Field(
         False,
         description="Whether every pipeline step should run automatically, one after another",
+    )
+    status: ProjectStatus | None = Field(
+        None,
+        description="Current pipeline status, written by the external workflow",
     )
     final_repo_url: str | None = Field(
         None, description="URL of the finalized (real) repository, once released"
@@ -108,6 +127,9 @@ class ProgressEvent(BaseModel):
 
     project_id: UUID = Field(..., description="UUID of the updated project")
     completion_percentage: int = Field(..., description="Updated completion percentage")
+    status: ProjectStatus | None = Field(
+        None, description="Current pipeline status"
+    )
 
 
 class FinalizationEvent(BaseModel):

@@ -35,7 +35,7 @@ class EventBroker:
         await self.__publish(
             "progress",
             event.project_id,
-            event.completion_percentage,
+            (event.completion_percentage, event.status),
             event.model_dump_json(by_alias=True),
         )
 

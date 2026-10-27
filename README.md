@@ -105,7 +105,8 @@ failure the page shows the error with **Retry** and **Back to projects**.
 ```json
 {
   "projectId": "11111111-1111-4111-8111-111111111111",
-  "completionPercentage": 75
+  "completionPercentage": 75,
+  "status": "CODE_RUNNING"
 }
 ```
 
@@ -137,7 +138,24 @@ Completion updates can reach the backend in two ways:
 
 Because the polling path and the API path can observe the same row change, the
 SSE broker collapses consecutive identical values for a given `projectId` and
-event type, so clients receive exactly one event per actual change.
+event type, so clients receive exactly one event per actual change. The
+`progress` dedupe also takes `status` into account, so a status-only change is
+still broadcast.
+
+### Pipeline status
+
+`projects.status` (nullable, migration `0008`) is written by the external n8n
+workflow and reports where the pipeline is:
+
+`ERROR`, `REQUIREMENTS_RUNNING`, `REQUIREMENTS_DONE`, `CODE_RUNNING`,
+`CODE_DONE`, `TEST_RUNNING`, `TEST_DONE`, `REVIEW_RUNNING`, `REVIEW_DONE`,
+`RETROSPECTIVE_RUNNING`, `RETROSPECTIVE_DONE`.
+
+The column has a `CHECK` constraint on these values. The detail-page phase bar
+marks completed phases green, makes the `_RUNNING` phase dot pulse, and shows the
+failed phase in red for `ERROR` (the first phase without a document, or the last
+phase if all documents exist). The backend returns the status in the project
+payloads and includes it in every `progress` SSE event.
 
 ### Finalization
 

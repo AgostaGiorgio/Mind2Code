@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.db.models.project import ProjectStatus
 from src.repositories.projects import ProjectRepository
 
 PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -19,13 +20,14 @@ OTHER_PROJECT_ID = UUID("22222222-2222-4222-8222-222222222222")
 UNKNOWN_PROJECT_ID = UUID("99999999-9999-4999-8999-999999999999")
 
 
-def _row(project_id=PROJECT_ID, name="Alpha", completion=40):
+def _row(project_id=PROJECT_ID, name="Alpha", completion=40, status=None):
     now = datetime.now(timezone.utc)
     return {
         "id": project_id,
         "name": name,
         "github_url": f"https://github.com/me/{name.lower()}",
         "completion_percentage": completion,
+        "status": status,
         "created_at": now,
         "updated_at": now,
     }
@@ -141,6 +143,13 @@ def test_get_project_detail_returns_model_and_passes_param():
 def test_get_project_detail_missing_returns_none():
     repo, _ = _repo(rows=[])
     assert asyncio.run(repo.get_project_detail(UNKNOWN_PROJECT_ID)) is None
+
+
+def test_get_project_detail_parses_status():
+    repo, _ = _repo(rows=[_row(PROJECT_ID, "Alpha", 40, status="CODE_RUNNING")])
+    detail = asyncio.run(repo.get_project_detail(PROJECT_ID))
+    assert detail is not None
+    assert detail.status is ProjectStatus.CODE_RUNNING
 
 
 def test_get_project_detail_error_returns_none():

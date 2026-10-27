@@ -134,6 +134,7 @@ class ProjectService:
         event = ProgressEvent(
             project_id=updated.id,
             completion_percentage=updated.completion_percentage,
+            status=updated.status,
         )
         await self.__event_broker.publish_progress(event)
         logger.info(

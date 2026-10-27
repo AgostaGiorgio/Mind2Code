@@ -22,12 +22,56 @@ const toast = useToast()
 // The pipeline, in the order the phases are produced by the external service.
 const PHASES = [
   { value: 'userInput', label: 'User Input', short: 'Input' },
-  { value: 'requirements', label: 'Requirements', short: 'Reqs' },
-  { value: 'codeSummary', label: 'Code', short: 'Code' },
-  { value: 'testSummary', label: 'Tests', short: 'Tests' },
-  { value: 'finalReview', label: 'Review', short: 'Review' },
-  { value: 'retrospective', label: 'Retrospective', short: 'Retro' },
+  {
+    value: 'requirements',
+    label: 'Requirements',
+    short: 'Reqs',
+    runningStatus: 'REQUIREMENTS_RUNNING',
+    doneRank: 2,
+  },
+  {
+    value: 'codeSummary',
+    label: 'Code',
+    short: 'Code',
+    runningStatus: 'CODE_RUNNING',
+    doneRank: 4,
+  },
+  {
+    value: 'testSummary',
+    label: 'Tests',
+    short: 'Tests',
+    runningStatus: 'TEST_RUNNING',
+    doneRank: 6,
+  },
+  {
+    value: 'finalReview',
+    label: 'Review',
+    short: 'Review',
+    runningStatus: 'REVIEW_RUNNING',
+    doneRank: 8,
+  },
+  {
+    value: 'retrospective',
+    label: 'Retrospective',
+    short: 'Retro',
+    runningStatus: 'RETROSPECTIVE_RUNNING',
+    doneRank: 10,
+  },
 ]
+
+// Rank of each reported status; ERROR has no position on the line.
+const STATUS_RANK = {
+  REQUIREMENTS_RUNNING: 1,
+  REQUIREMENTS_DONE: 2,
+  CODE_RUNNING: 3,
+  CODE_DONE: 4,
+  TEST_RUNNING: 5,
+  TEST_DONE: 6,
+  REVIEW_RUNNING: 7,
+  REVIEW_DONE: 8,
+  RETROSPECTIVE_RUNNING: 9,
+  RETROSPECTIVE_DONE: 10,
+}
 
 const project = ref(null)
 const activePhase = ref(null)
@@ -45,11 +89,37 @@ function hasContent(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+const statusRank = computed(() =>
+  project.value?.status ? (STATUS_RANK[project.value.status] ?? 0) : 0,
+)
+
+// ERROR does not say which phase failed: mark the first phase without content,
+// falling back to the last phase when every document is already there.
+const errorPhase = computed(() => {
+  if (project.value?.status !== 'ERROR') return null
+  const pending = PHASES.find(
+    (phase) => phase.value !== 'userInput' && !hasContent(project.value?.[phase.value]),
+  )
+  return (pending ?? PHASES[PHASES.length - 1]).value
+})
+
 const phaseOptions = computed(() =>
-  PHASES.map((phase) => ({
-    ...phase,
-    available: hasContent(project.value?.[phase.value]),
-  })),
+  PHASES.map((phase) => {
+    const hasDoc = hasContent(project.value?.[phase.value])
+    const done =
+      phase.value === 'userInput'
+        ? hasDoc || statusRank.value > 0
+        : hasDoc || (phase.doneRank ? statusRank.value >= phase.doneRank : false)
+    return {
+      ...phase,
+      available: hasDoc,
+      done,
+      running: phase.runningStatus
+        ? project.value?.status === phase.runningStatus
+        : false,
+      error: errorPhase.value === phase.value,
+    }
+  }),
 )
 
 const lastAvailablePhase = computed(() => {
@@ -144,6 +214,7 @@ useSse(
   (event) => {
     if (!project.value || event.projectId !== projectId) return
     project.value.completionPercentage = event.completionPercentage
+    project.value.status = event.status
     refresh()
   },
   (event) => {

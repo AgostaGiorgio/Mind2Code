@@ -81,7 +81,7 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 ### SSE event contract
 
 - Event type: `progress`
-- Payload: `{"projectId": "<uuid>", "completionPercentage": <int>}`
+- Payload: `{"projectId": "<uuid>", "completionPercentage": <int>, "status": "<status or null>"}`
 - Heartbeat comment (`: heartbeat`) is sent at least every 15 seconds.
 
 ## Migrations

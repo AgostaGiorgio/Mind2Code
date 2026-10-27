@@ -3,7 +3,7 @@
 import asyncio
 from uuid import UUID
 
-from src.db.models.project import FinalizationEvent, ProgressEvent
+from src.db.models.project import FinalizationEvent, ProgressEvent, ProjectStatus
 from src.sse.broker import EventBroker
 
 PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -20,7 +20,7 @@ def test_progress_delivered_to_all_subscribers():
 
     expected = (
         "progress",
-        f'{{"projectId":"{PROJECT_ID}","completionPercentage":75}}',
+        f'{{"projectId":"{PROJECT_ID}","completionPercentage":75,"status":null}}',
     )
     assert q1.get_nowait() == expected
     assert q2.get_nowait() == expected
@@ -87,7 +87,7 @@ def test_full_queue_is_dropped_as_dead_subscriber():
     assert queue.qsize() == 1
     assert queue.get_nowait() == (
         "progress",
-        f'{{"projectId":"{PROJECT_ID}","completionPercentage":10}}',
+        f'{{"projectId":"{PROJECT_ID}","completionPercentage":10,"status":null}}',
     )
 
 
@@ -136,6 +136,32 @@ def test_same_value_for_different_project_ids_is_published():
             ProgressEvent(project_id=OTHER_PROJECT_ID, completion_percentage=75)
         )
     )
+    assert q.qsize() == 2
+
+
+def test_same_completion_with_different_status_is_published():
+    broker = EventBroker()
+    q = broker.subscribe()
+
+    asyncio.run(
+        broker.publish_progress(
+            ProgressEvent(
+                project_id=PROJECT_ID,
+                completion_percentage=40,
+                status=ProjectStatus.CODE_RUNNING,
+            )
+        )
+    )
+    asyncio.run(
+        broker.publish_progress(
+            ProgressEvent(
+                project_id=PROJECT_ID,
+                completion_percentage=40,
+                status=ProjectStatus.CODE_DONE,
+            )
+        )
+    )
+
     assert q.qsize() == 2
 
 

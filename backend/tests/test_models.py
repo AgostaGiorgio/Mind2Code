@@ -18,6 +18,7 @@ from src.db.models.project import (
     ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
+    ProjectStatus,
 )
 
 PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -51,6 +52,15 @@ def test_project_accepts_snake_case_input():
     project = Project(**_project_kwargs())
     assert project.id == PROJECT_ID
     assert project.completion_percentage == 40
+    assert project.status is None
+
+
+def test_project_status_is_validated():
+    project = Project(**{**_project_kwargs(), "status": "CODE_RUNNING"})
+    assert project.status is ProjectStatus.CODE_RUNNING
+
+    with pytest.raises(ValidationError):
+        Project(**{**_project_kwargs(), "status": "CODE_STARTED"})
 
 
 @pytest.mark.parametrize("value", [0, 1, 50, 99, 100])
@@ -71,11 +81,19 @@ def test_project_completion_percentage_is_bounded():
 
 
 def test_progress_event_payload_contract():
-    event = ProgressEvent(project_id=PROJECT_ID, completion_percentage=75)
+    event = ProgressEvent(
+        project_id=PROJECT_ID,
+        completion_percentage=75,
+        status=ProjectStatus.CODE_RUNNING,
+    )
     payload = event.model_dump(by_alias=True)
-    assert payload == {"projectId": PROJECT_ID, "completionPercentage": 75}
+    assert payload == {
+        "projectId": PROJECT_ID,
+        "completionPercentage": 75,
+        "status": ProjectStatus.CODE_RUNNING,
+    }
     assert event.model_dump_json(by_alias=True) == (
-        f'{{"projectId":"{PROJECT_ID}","completionPercentage":75}}'
+        f'{{"projectId":"{PROJECT_ID}","completionPercentage":75,"status":"CODE_RUNNING"}}'
     )
 
 

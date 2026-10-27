@@ -82,7 +82,7 @@ def test_us4_valid_update_persists_and_broadcasts_to_all_clients(fake_repo, brok
         # both SSE clients received a matching progress event
         expected = (
             "progress",
-            f'{{"projectId":"{PROJECT_A_ID}","completionPercentage":75}}',
+            f'{{"projectId":"{PROJECT_A_ID}","completionPercentage":75,"status":null}}',
         )
         assert q1.get_nowait() == expected
         assert q2.get_nowait() == expected

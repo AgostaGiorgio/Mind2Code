@@ -39,6 +39,7 @@ export function useProjectsStore() {
     const project = state.projects[event.projectId]
     if (project) {
       project.completionPercentage = event.completionPercentage
+      project.status = event.status
     }
   }
 

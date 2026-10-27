@@ -59,7 +59,7 @@ def test_poll_publishes_externally_updated_rows():
 
         assert q.get_nowait() == (
             "progress",
-            f'{{"projectId":"{PROJECT_ID}","completionPercentage":75}}',
+            f'{{"projectId":"{PROJECT_ID}","completionPercentage":75,"status":null}}',
         )
         name, payload = q.get_nowait()
         assert name == "finalization"

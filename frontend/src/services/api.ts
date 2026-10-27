@@ -127,7 +127,8 @@ export function parseProgressEvent(data: string): ProgressEvent | null {
       typeof (parsed as { projectId: unknown }).projectId === 'string' &&
       typeof (parsed as { completionPercentage: unknown }).completionPercentage === 'number'
     ) {
-      return parsed as ProgressEvent
+      const status = (parsed as { status?: ProgressEvent['status'] }).status ?? null
+      return { ...(parsed as ProgressEvent), status }
     }
   } catch {
     // malformed payload: ignore

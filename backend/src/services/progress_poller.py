@@ -81,6 +81,7 @@ class ProgressPoller:
                 ProgressEvent(
                     project_id=project.id,
                     completion_percentage=project.completion_percentage,
+                    status=project.status,
                 )
             )
             await self.__event_broker.publish_finalization(
