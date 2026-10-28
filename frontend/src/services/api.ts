@@ -7,6 +7,7 @@ import type {
   Project,
   ProjectDetail,
   ProgressUpdatePayload,
+  RetryPhase,
 } from '@/types'
 
 const apiClient: AxiosInstance = axios.create({
@@ -107,6 +108,22 @@ export async function finalizeProject(projectId: string): Promise<void> {
     await apiClient.post(`/api/v1/projects/${projectId}/finalize`, null, {
       timeout: 1200000,
     })
+  } catch (error) {
+    throw normalizeError(error)
+  }
+}
+
+export async function retryProjectPhase(
+  projectId: string,
+  phase: RetryPhase,
+): Promise<ProjectDetail> {
+  try {
+    const { data } = await apiClient.post<ProjectDetail>(
+      `/api/v1/projects/${projectId}/${phase}`,
+      null,
+      { timeout: 1200000 },
+    )
+    return data
   } catch (error) {
     throw normalizeError(error)
   }

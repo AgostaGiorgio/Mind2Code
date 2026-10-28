@@ -12,9 +12,15 @@ from src.db.models.project import (
     ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
+    RetryPhase,
 )
 from src.di import Container
-from src.services.projects import CreateProjectStatus, FinalizeResult, ProjectService
+from src.services.projects import (
+    CreateProjectStatus,
+    FinalizeResult,
+    ProjectService,
+    RetryPhaseResult,
+)
 from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
@@ -106,6 +112,34 @@ async def update_progress(
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return updated
+
+
+# Generic phase retry, e.g. POST /projects/{id}/CODE. It is declared after the
+# specific action routes so /finalize and /progress keep winning the match.
+@api_router.post("/{project_id}/{phase}", response_model=ProjectDetail, status_code=200)
+@inject
+async def retry_phase(
+    project_id: UUID,
+    phase: RetryPhase,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    outcome = await project_service.retry_phase(project_id, phase)
+
+    if outcome.result is RetryPhaseResult.OK and outcome.project is not None:
+        return outcome.project
+    if outcome.result is RetryPhaseResult.NOT_FOUND:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    if outcome.result is RetryPhaseResult.CONFLICT:
+        raise HTTPException(
+            status_code=409, detail="Only a project in ERROR status can retry a phase."
+        )
+    if outcome.result is RetryPhaseResult.NOT_CONFIGURED:
+        raise HTTPException(
+            status_code=503, detail="Phase retry workflow is not configured."
+        )
+    raise HTTPException(
+        status_code=502, detail="Could not start the phase retry workflow."
+    )
 
 
 events_router = APIRouter(tags=["events"])

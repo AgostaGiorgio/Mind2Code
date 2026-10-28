@@ -177,6 +177,8 @@ class FakeN8NClient:
         requirements_configured: bool = True,
         finalize_ok: bool = True,
         finalize_configured: bool = True,
+        phase_ok: bool = True,
+        phases_configured: bool = True,
     ):
         self.title = title
         self.project_title_configured = title_configured
@@ -184,9 +186,12 @@ class FakeN8NClient:
         self.requirements_configured = requirements_configured
         self.finalize_ok = finalize_ok
         self.finalize_configured = finalize_configured
+        self.phase_ok = phase_ok
+        self.phases_configured = phases_configured
         self.title_calls: list[str] = []
         self.requirements_calls: list[str] = []
         self.finalize_calls: list[str] = []
+        self.phase_calls: list[tuple[str, str]] = []
 
     async def extract_project_title(self, user_input: str) -> str | None:
         self.title_calls.append(user_input)
@@ -199,6 +204,13 @@ class FakeN8NClient:
     async def trigger_finalization(self, project_id: str) -> bool:
         self.finalize_calls.append(project_id)
         return self.finalize_ok
+
+    def phase_configured(self, phase: str) -> bool:
+        return self.phases_configured
+
+    async def trigger_phase(self, phase: str, project_id: str) -> bool:
+        self.phase_calls.append((phase, project_id))
+        return self.phase_ok
 
 
 @contextmanager

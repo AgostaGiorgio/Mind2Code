@@ -11,6 +11,8 @@ export type ProjectStatus =
   | 'RETROSPECTIVE_RUNNING'
   | 'RETROSPECTIVE_DONE'
 
+export type RetryPhase = 'REQUIREMENTS' | 'CODE' | 'TEST' | 'REVIEW' | 'RETROSPECTIVE'
+
 export interface Project {
   id: string
   name: string

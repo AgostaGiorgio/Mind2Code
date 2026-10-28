@@ -11,6 +11,8 @@ from src.db.models.project import (
     ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
+    ProjectStatus,
+    RetryPhase,
 )
 from src.repositories.projects import ProjectRepository
 from src.sse.broker import EventBroker
@@ -33,9 +35,23 @@ class CreateProjectStatus(str, Enum):
     PERSIST_FAILED = "persist_failed"
 
 
+class RetryPhaseResult(str, Enum):
+    OK = "ok"
+    NOT_FOUND = "not_found"
+    CONFLICT = "conflict"
+    NOT_CONFIGURED = "not_configured"
+    WEBHOOK_FAILED = "webhook_failed"
+
+
 @dataclass(frozen=True)
 class CreateProjectOutcome:
     status: CreateProjectStatus
+    project: ProjectDetail | None = None
+
+
+@dataclass(frozen=True)
+class RetryPhaseOutcome:
+    result: RetryPhaseResult
     project: ProjectDetail | None = None
 
 
@@ -92,6 +108,25 @@ class ProjectService:
     ) -> ProjectDetail | None:
         logger.debug(f"Renaming project {project_id} to '{payload.name}'...")
         return await self.__project_repository.update_name(project_id, payload.name)
+
+    async def retry_phase(self, project_id: UUID, phase: RetryPhase) -> RetryPhaseOutcome:
+        logger.debug(f"Requesting retry of {phase.value} for project {project_id}...")
+
+        project = await self.__project_repository.get_project_detail(project_id)
+        if project is None:
+            return RetryPhaseOutcome(RetryPhaseResult.NOT_FOUND)
+        if project.status is not ProjectStatus.ERROR:
+            return RetryPhaseOutcome(RetryPhaseResult.CONFLICT)
+
+        if not self.__n8n_client.phase_configured(phase.value):
+            return RetryPhaseOutcome(RetryPhaseResult.NOT_CONFIGURED)
+
+        triggered = await self.__n8n_client.trigger_phase(phase.value, str(project_id))
+        if not triggered:
+            return RetryPhaseOutcome(RetryPhaseResult.WEBHOOK_FAILED)
+
+        logger.info(f"{phase.value} retry started for project {project_id}.")
+        return RetryPhaseOutcome(RetryPhaseResult.OK, project)
 
     async def finalize_project(self, project_id: UUID) -> FinalizeResult:
         logger.debug(f"Requesting finalization for project {project_id}...")

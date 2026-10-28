@@ -53,6 +53,10 @@ Copy `.env.example` to `.env` and fill in the values:
 | `LOG_LEVEL` | *(optional)* Python logging level (default `INFO`) |
 | `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
 | `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation from the DB project id |
+| `N8N_CODE_WEBHOOK_URL` | n8n webhook for the code phase (retry) |
+| `N8N_TEST_WEBHOOK_URL` | n8n webhook for the test phase (retry) |
+| `N8N_REVIEW_WEBHOOK_URL` | n8n webhook for the review phase (retry) |
+| `N8N_RETROSPECTIVE_WEBHOOK_URL` | n8n webhook for the retrospective phase (retry) |
 | `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `120`) |
 
 ## Local development
@@ -77,6 +81,7 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{projectId}/progress` | Update completion percentage |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Retry a failed phase (`REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) |
 
 ### SSE event contract
 

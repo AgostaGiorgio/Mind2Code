@@ -24,6 +24,14 @@ class ProjectStatus(str, Enum):
     RETROSPECTIVE_DONE = "RETROSPECTIVE_DONE"
 
 
+class RetryPhase(str, Enum):
+    REQUIREMENTS = "REQUIREMENTS"
+    CODE = "CODE"
+    TEST = "TEST"
+    REVIEW = "REVIEW"
+    RETROSPECTIVE = "RETROSPECTIVE"
+
+
 class Project(BaseModel):
     model_config = ConfigDict(
         alias_generator=_to_camel,

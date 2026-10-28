@@ -11,19 +11,29 @@ class N8NClient:
     """HTTP client for the n8n workflows used by Mind2Code.
 
     A single client groups every webhook the backend calls: finalization,
-    project-title extraction and requirements generation.
+    project-title extraction and the per-phase workflows.
     """
 
     def __init__(
         self,
         project_title_url: str | None,
         requirements_url: str | None,
+        code_url: str | None,
+        test_url: str | None,
+        review_url: str | None,
+        retrospective_url: str | None,
         finalize_url: str | None,
         timeout_seconds: float = 30.0,
     ):
         self.__project_title_url = project_title_url
-        self.__requirements_url = requirements_url
         self.__finalize_url = finalize_url
+        self.__phase_urls = {
+            "REQUIREMENTS": requirements_url,
+            "CODE": code_url,
+            "TEST": test_url,
+            "REVIEW": review_url,
+            "RETROSPECTIVE": retrospective_url,
+        }
         self.__timeout = timeout_seconds
 
     @property
@@ -36,7 +46,10 @@ class N8NClient:
 
     @property
     def requirements_configured(self) -> bool:
-        return bool(self.__requirements_url)
+        return bool(self.__phase_urls["REQUIREMENTS"])
+
+    def phase_configured(self, phase: str) -> bool:
+        return bool(self.__phase_urls.get(phase))
 
     async def trigger_finalization(self, project_id: str) -> bool:
         """Start the release workflow. The DB UUID of the project is sent."""
@@ -83,17 +96,19 @@ class N8NClient:
 
     async def trigger_requirements(self, project_id: str) -> bool:
         """Start the requirements-generation workflow for a DB project id."""
-        if not self.__requirements_url:
+        return await self.trigger_phase("REQUIREMENTS", project_id)
+
+    async def trigger_phase(self, phase: str, project_id: str) -> bool:
+        """Start the workflow that owns a specific pipeline phase."""
+        url = self.__phase_urls.get(phase)
+        if not url:
             return False
 
-        response = await self.__post(
-            self.__requirements_url,
-            {"project_id": project_id},
-        )
+        response = await self.__post(url, {"project_id": project_id})
         if response is None:
             return False
 
-        logger.info(f"Requirements webhook triggered for project {project_id}.")
+        logger.info(f"{phase} webhook triggered for project {project_id}.")
         return True
 
     async def __post(

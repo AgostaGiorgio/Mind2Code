@@ -31,6 +31,7 @@ All REST endpoints are prefixed with `/api/v1`.
 | `GET` | `/api/v1/projects/{projectId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
 | `PATCH` | `/api/v1/projects/{projectId}` | Rename a project (`{ "name": "..." }`) |
 | `POST` | `/api/v1/projects/{projectId}/finalize` | Start finalization (release) — 204 |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Retry a failed phase when `status = ERROR` (phase: `REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) — 200 `ProjectDetail` |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{projectId}/progress` | Update a project's completion percentage |
 
@@ -157,6 +158,21 @@ failed phase in red for `ERROR` (the first phase without a document, or the last
 phase if all documents exist). The backend returns the status in the project
 payloads and includes it in every `progress` SSE event.
 
+When a project is in `ERROR`, the detail page shows a **Retry** action for the
+failed phase. `POST /api/v1/projects/{projectId}/{phase}` checks that the status
+is `ERROR` and calls the webhook that owns that phase
+(`N8N_REQUIREMENTS_WEBHOOK_URL`, `N8N_CODE_WEBHOOK_URL`,
+`N8N_TEST_WEBHOOK_URL`, `N8N_REVIEW_WEBHOOK_URL`,
+`N8N_RETROSPECTIVE_WEBHOOK_URL`) with:
+
+```json
+{ "project_id": "<uuid>" }
+```
+
+The backend does **not** change `status` on retry: the n8n workflow must set it
+to `<PHASE>_RUNNING` / `<PHASE>_DONE` / `ERROR` (and bump `updated_at`). The
+endpoint returns the current `ProjectDetail`.
+
 ### Finalization
 
 A project that reaches `completion_percentage = 100` can be **finalized**: the
@@ -197,6 +213,10 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 | `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
 | `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
 | `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation for a newly created project |
+| `N8N_CODE_WEBHOOK_URL` | n8n webhook for the code phase (used by the retry endpoint) |
+| `N8N_TEST_WEBHOOK_URL` | n8n webhook for the test phase (used by the retry endpoint) |
+| `N8N_REVIEW_WEBHOOK_URL` | n8n webhook for the review phase (used by the retry endpoint) |
+| `N8N_RETROSPECTIVE_WEBHOOK_URL` | n8n webhook for the retrospective phase (used by the retry endpoint) |
 | `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `120`) |
 | `ORBIT_API_URL` | Full Orbit registration endpoint (`https://api.orbit.agogi.dev/api/v1/register`); unset ⇒ Orbit disabled |
 | `APP_URL` | Public URL of this service, shown in Orbit (must be an absolute http(s) URL) |

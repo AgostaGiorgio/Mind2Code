@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Check, Pencil, RefreshCw, X } from '@lucide/vue'
-import { getProject, updateProjectName } from '@/services/api'
+import { ArrowLeft, Check, Pencil, RefreshCw, TriangleAlert, X } from '@lucide/vue'
+import { getProject, retryProjectPhase, updateProjectName } from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
 import { useSse } from '@/composables/useSse'
 import { useToast } from '@/composables/useToast'
@@ -122,6 +122,21 @@ const phaseOptions = computed(() =>
   }),
 )
 
+const RETRY_PHASES = {
+  requirements: { label: 'Requirements', value: 'REQUIREMENTS' },
+  codeSummary: { label: 'Code', value: 'CODE' },
+  testSummary: { label: 'Tests', value: 'TEST' },
+  finalReview: { label: 'Review', value: 'REVIEW' },
+  retrospective: { label: 'Retrospective', value: 'RETROSPECTIVE' },
+}
+
+const failedPhase = computed(() =>
+  errorPhase.value ? (RETRY_PHASES[errorPhase.value] ?? null) : null,
+)
+
+const retrying = ref(false)
+const retryError = ref('')
+
 const lastAvailablePhase = computed(() => {
   for (let i = PHASES.length - 1; i >= 0; i -= 1) {
     if (hasContent(project.value?.[PHASES[i].value])) return PHASES[i].value
@@ -179,6 +194,25 @@ async function refresh() {
     syncActivePhase()
   } catch {
     // Keep the previously loaded project if the refresh fails.
+  }
+}
+
+async function retryFailedPhase() {
+  const phase = failedPhase.value
+  if (!phase || retrying.value) return
+
+  retrying.value = true
+  retryError.value = ''
+  try {
+    project.value = await retryProjectPhase(projectId, phase.value)
+    syncActivePhase()
+    toast.success(`${phase.label} phase restarted.`)
+  } catch (e) {
+    retryError.value = e instanceof Error ? e.message : 'Could not retry the phase.'
+    toast.error(retryError.value)
+    await refresh()
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -341,6 +375,35 @@ onMounted(load)
 
         <!-- Pipeline phases + selected document -->
         <div class="app-card rounded-app flex min-w-0 flex-col gap-5 p-5">
+          <div
+            v-if="project.status === 'ERROR' && failedPhase"
+            class="flex flex-col gap-3 rounded-app-sm border border-red-400/30 bg-red-500/10 p-3 sm:flex-row sm:items-center"
+            role="alert"
+          >
+            <div class="flex min-w-0 flex-1 items-start gap-2">
+              <TriangleAlert :size="16" class="mt-0.5 shrink-0 text-red-400" />
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-brand-textMain">
+                  Pipeline error on {{ failedPhase.label }}
+                </p>
+                <p v-if="retryError" class="text-xs text-red-400">{{ retryError }}</p>
+                <p v-else class="text-xs text-brand-textMuted">
+                  Retry this phase to continue the pipeline.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-app bg-red-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="retrying"
+              @click="retryFailedPhase"
+            >
+              <RefreshCw :size="14" :class="retrying ? 'animate-spin' : ''" />
+              {{ retrying ? 'Retrying…' : 'Retry' }}
+            </button>
+          </div>
+
           <PhaseStepper
             :model-value="activePhase"
             :options="phaseOptions"

@@ -48,6 +48,22 @@ class AppConfig(BaseSettings):
         default=None,
         description="n8n webhook URL that starts requirements generation for a project",
     )
+    n8n_code_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the code phase",
+    )
+    n8n_test_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the test phase",
+    )
+    n8n_review_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the review phase",
+    )
+    n8n_retrospective_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the retrospective phase",
+    )
     n8n_timeout_seconds: float = Field(
         default=120.0,
         gt=0,

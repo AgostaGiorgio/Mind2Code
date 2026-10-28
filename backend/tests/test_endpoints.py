@@ -19,6 +19,7 @@ from tests.conftest import (
     app_client,
     make_project,
 )
+from src.db.models.project import ProjectStatus
 
 
 def test_us1_get_projects_lists_all(fake_repo, broker):
@@ -411,6 +412,73 @@ def test_finalize_not_configured_returns_503(fake_repo, broker):
         assert response.status_code == 503
     assert fake_repo.finalize_requests == [PROJECT_A_ID]
     assert fake_repo.projects[PROJECT_A_ID].finalization_percentage == 0
+
+
+# --------------------------------------------------------------------------- #
+# Retry a failed phase
+# --------------------------------------------------------------------------- #
+
+
+def _error_project():
+    return make_project(PROJECT_A_ID, "Alpha").model_copy(
+        update={"status": ProjectStatus.ERROR}
+    )
+
+
+def test_retry_phase_from_error_triggers_webhook(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _error_project()
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/CODE")
+        assert response.status_code == 200
+        body = response.json()
+        # The backend leaves the status untouched: n8n updates it.
+        assert body["status"] == "ERROR"
+    assert n8n.phase_calls == [("CODE", str(PROJECT_A_ID))]
+
+
+def test_retry_phase_requires_error_status(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = make_project(PROJECT_A_ID, "Alpha", completion=40)
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/CODE")
+        assert response.status_code == 409
+    assert n8n.phase_calls == []
+
+
+def test_retry_phase_unknown_project_returns_404(fake_repo, broker):
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{UNKNOWN_PROJECT_ID}/CODE")
+        assert response.status_code == 404
+    assert n8n.phase_calls == []
+
+
+def test_retry_phase_invalid_phase_returns_422(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _error_project()
+    with app_client(fake_repo, broker) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/BOGUS")
+        assert response.status_code == 422
+
+
+def test_retry_phase_not_configured_keeps_error(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _error_project()
+    n8n = FakeN8NClient(phases_configured=False)
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/REQUIREMENTS")
+        assert response.status_code == 503
+    assert n8n.phase_calls == []
+    assert fake_repo.projects[PROJECT_A_ID].status is ProjectStatus.ERROR
+
+
+def test_retry_phase_webhook_failure_keeps_error(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _error_project()
+    n8n = FakeN8NClient(phase_ok=False)
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/REVIEW")
+        assert response.status_code == 502
+    assert n8n.phase_calls == [("REVIEW", str(PROJECT_A_ID))]
+    assert fake_repo.projects[PROJECT_A_ID].status is ProjectStatus.ERROR
 
 
 # --------------------------------------------------------------------------- #

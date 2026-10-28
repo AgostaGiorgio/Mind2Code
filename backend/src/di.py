@@ -21,6 +21,10 @@ class Container(containers.DeclarativeContainer):
         finalize_url=app_config.n8n_finalize_webhook_url,
         project_title_url=app_config.n8n_project_title_webhook_url,
         requirements_url=app_config.n8n_requirements_webhook_url,
+        code_url=app_config.n8n_code_webhook_url,
+        test_url=app_config.n8n_test_webhook_url,
+        review_url=app_config.n8n_review_webhook_url,
+        retrospective_url=app_config.n8n_retrospective_webhook_url,
         timeout_seconds=app_config.n8n_timeout_seconds,
     )
 
