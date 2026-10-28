@@ -64,29 +64,6 @@ RETURNING id, name, github_url, completion_percentage,
           retrospective
 """)
 
-# Atomically claims a finalization request only for an eligible project
-# (fully complete, not already finalizing or finalized).
-REQUEST_FINALIZATION = text(f"""
-UPDATE projects
-SET finalization_percentage = 1,
-    finalize_error = NULL,
-    updated_at = now()
-WHERE id = :project_id
-  AND completion_percentage = 100
-  AND finalization_percentage = 0
-  AND final_repo_url IS NULL
-RETURNING {_PROJECT_COLUMNS}
-""")
-
-# Rolls a finalization request back to "not started" so the UI can retry.
-RESET_FINALIZATION = text("""
-UPDATE projects
-SET finalization_percentage = 0,
-    finalize_error = :finalize_error,
-    updated_at = now()
-WHERE id = :project_id
-""")
-
 GET_LATEST_UPDATED_AT = text("""
 SELECT max(updated_at) AS latest_updated_at
 FROM projects

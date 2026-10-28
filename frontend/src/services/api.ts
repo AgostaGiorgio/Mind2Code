@@ -102,17 +102,6 @@ export async function postProgress(
   }
 }
 
-export async function finalizeProject(projectId: string): Promise<void> {
-  try {
-    // The backend waits on the n8n webhook, which shares the N8N_TIMEOUT_SECONDS timeout.
-    await apiClient.post(`/api/v1/projects/${projectId}/finalize`, null, {
-      timeout: 1200000,
-    })
-  } catch (error) {
-    throw normalizeError(error)
-  }
-}
-
 export async function startProjectPhase(
   projectId: string,
   phase: RetryPhase,

@@ -27,14 +27,6 @@ _NEXT_PHASE_BY_STATUS = {
 }
 
 
-class FinalizeResult(str, Enum):
-    OK = "ok"
-    NOT_FOUND = "not_found"
-    CONFLICT = "conflict"
-    WEBHOOK_FAILED = "webhook_failed"
-    NOT_CONFIGURED = "not_configured"
-
-
 class CreateProjectStatus(str, Enum):
     CREATED = "created"
     NOT_CONFIGURED = "not_configured"
@@ -124,9 +116,9 @@ class ProjectService:
             return RetryPhaseOutcome(RetryPhaseResult.NOT_FOUND)
 
         can_retry = project.status == ProjectStatus.ERROR
-        can_start_next = (
-            not project.auto
-            and _NEXT_PHASE_BY_STATUS.get(project.status) == phase
+        next_phase = _NEXT_PHASE_BY_STATUS.get(project.status)
+        can_start_next = next_phase == phase and (
+            phase == RetryPhase.RETROSPECTIVE or not project.auto
         )
         if not (can_retry or can_start_next):
             return RetryPhaseOutcome(RetryPhaseResult.CONFLICT)
@@ -138,34 +130,8 @@ class ProjectService:
         if not triggered:
             return RetryPhaseOutcome(RetryPhaseResult.WEBHOOK_FAILED)
 
-        logger.info(f"{phase.value} retry started for project {project_id}.")
+        logger.info(f"{phase.value} phase started for project {project_id}.")
         return RetryPhaseOutcome(RetryPhaseResult.OK, project)
-
-    async def finalize_project(self, project_id: UUID) -> FinalizeResult:
-        logger.debug(f"Requesting finalization for project {project_id}...")
-
-        # Atomically claim the request: only a fully complete, not-yet-finalized
-        # project can be finalized.
-        requested = await self.__project_repository.request_finalization(project_id)
-        if requested is None:
-            existing = await self.__project_repository.get_project_detail(project_id)
-            return FinalizeResult.CONFLICT if existing else FinalizeResult.NOT_FOUND
-
-        if not self.__n8n_client.finalize_configured:
-            await self.__project_repository.reset_finalization(
-                project_id, "finalization is not configured"
-            )
-            return FinalizeResult.NOT_CONFIGURED
-
-        triggered = await self.__n8n_client.trigger_finalization(str(project_id))
-        if not triggered:
-            await self.__project_repository.reset_finalization(
-                project_id, "could not reach the finalization workflow"
-            )
-            return FinalizeResult.WEBHOOK_FAILED
-
-        logger.info(f"Finalization started for project {project_id}.")
-        return FinalizeResult.OK
 
     async def update_progress(
         self, project_id: UUID, payload: ProgressUpdateRequest

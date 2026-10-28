@@ -342,80 +342,7 @@ def test_rename_project_blank_returns_422(fake_repo, broker, name):
 
 
 # --------------------------------------------------------------------------- #
-# Finalize (release) a project
-# --------------------------------------------------------------------------- #
-
-
-def test_finalize_eligible_project_triggers_webhook(fake_repo, broker):
-    fake_repo.projects[PROJECT_A_ID] = make_project(
-        PROJECT_A_ID, "Alpha", completion=100
-    )
-    n8n = FakeN8NClient()
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/finalize")
-        assert response.status_code == 204
-    assert fake_repo.finalize_requests == [PROJECT_A_ID]
-    assert n8n.finalize_calls == [str(PROJECT_A_ID)]
-    assert fake_repo.projects[PROJECT_A_ID].finalization_percentage == 1
-
-
-def test_finalize_incomplete_project_returns_409(fake_repo, broker):
-    fake_repo.projects[PROJECT_A_ID] = make_project(
-        PROJECT_A_ID, "Alpha", completion=99
-    )
-    n8n = FakeN8NClient()
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/finalize")
-        assert response.status_code == 409
-    assert n8n.finalize_calls == []
-    assert fake_repo.finalize_requests == []
-
-
-def test_finalize_already_started_returns_409(fake_repo, broker):
-    project = make_project(PROJECT_A_ID, "Alpha", completion=100).model_copy(
-        update={"finalization_percentage": 1}
-    )
-    fake_repo.projects[PROJECT_A_ID] = project
-    n8n = FakeN8NClient()
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/finalize")
-        assert response.status_code == 409
-    assert n8n.finalize_calls == []
-
-
-def test_finalize_unknown_project_returns_404(fake_repo, broker):
-    n8n = FakeN8NClient()
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{UNKNOWN_PROJECT_ID}/finalize")
-        assert response.status_code == 404
-
-
-def test_finalize_webhook_failure_resets_and_returns_503(fake_repo, broker):
-    fake_repo.projects[PROJECT_A_ID] = make_project(
-        PROJECT_A_ID, "Alpha", completion=100
-    )
-    n8n = FakeN8NClient(finalize_ok=False)
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/finalize")
-        assert response.status_code == 503
-    assert fake_repo.projects[PROJECT_A_ID].finalization_percentage == 0
-    assert fake_repo.projects[PROJECT_A_ID].finalize_error is not None
-
-
-def test_finalize_not_configured_returns_503(fake_repo, broker):
-    fake_repo.projects[PROJECT_A_ID] = make_project(
-        PROJECT_A_ID, "Alpha", completion=100
-    )
-    n8n = FakeN8NClient(finalize_configured=False)
-    with app_client(fake_repo, broker, n8n) as client:
-        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/finalize")
-        assert response.status_code == 503
-    assert fake_repo.finalize_requests == [PROJECT_A_ID]
-    assert fake_repo.projects[PROJECT_A_ID].finalization_percentage == 0
-
-
-# --------------------------------------------------------------------------- #
-# Retry a failed phase
+# Retry a failed phase / start the next phase
 # --------------------------------------------------------------------------- #
 
 
@@ -529,6 +456,18 @@ def test_start_next_phase_requires_a_done_status(fake_repo, broker):
         response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/REQUIREMENTS")
         assert response.status_code == 409
     assert n8n.phase_calls == []
+
+
+def test_start_retrospective_is_manual_even_with_auto(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _project_with(
+        ProjectStatus.REVIEW_DONE, auto=True
+    )
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/RETROSPECTIVE")
+        assert response.status_code == 200
+        assert response.json()["status"] == "REVIEW_DONE"
+    assert n8n.phase_calls == [("RETROSPECTIVE", str(PROJECT_A_ID))]
 
 
 # --------------------------------------------------------------------------- #

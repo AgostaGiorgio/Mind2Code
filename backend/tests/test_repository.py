@@ -157,33 +157,6 @@ def test_get_project_detail_error_returns_none():
     assert asyncio.run(repo.get_project_detail(PROJECT_ID)) is None
 
 
-def test_request_finalization_returns_project_and_passes_param():
-    repo, session = _repo(rows=[_row(PROJECT_ID, "Alpha", 100)])
-    project = asyncio.run(repo.request_finalization(PROJECT_ID))
-    assert project is not None
-    assert project.id == PROJECT_ID
-    assert session.executed[0][1] == {"project_id": PROJECT_ID}
-
-
-def test_request_finalization_not_eligible_returns_none():
-    repo, _ = _repo(rows=[])
-    assert asyncio.run(repo.request_finalization(UNKNOWN_PROJECT_ID)) is None
-
-
-def test_request_finalization_error_returns_none():
-    repo, _ = _repo(error=SQLAlchemyError("boom"))
-    assert asyncio.run(repo.request_finalization(PROJECT_ID)) is None
-
-
-def test_reset_finalization_executes_update():
-    repo, session = _repo(rows=[])
-    asyncio.run(repo.reset_finalization(PROJECT_ID, "boom"))
-    assert session.executed[0][1] == {
-        "project_id": PROJECT_ID,
-        "finalize_error": "boom",
-    }
-
-
 def test_create_project_returns_detail_and_passes_params():
     row = {**_row(PROJECT_ID, "Build me", 0), "auto": True, "user_input": "Build me"}
     repo, session = _repo(rows=[row])

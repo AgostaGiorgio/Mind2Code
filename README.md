@@ -30,8 +30,7 @@ All REST endpoints are prefixed with `/api/v1`.
 | `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger — 201 |
 | `GET` | `/api/v1/projects/{projectId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
 | `PATCH` | `/api/v1/projects/{projectId}` | Rename a project (`{ "name": "..." }`) |
-| `POST` | `/api/v1/projects/{projectId}/finalize` | Start finalization (release) — 204 |
-| `POST` | `/api/v1/projects/{projectId}/{phase}` | Start the next phase when `auto = false`, or retry the failed phase when `status = ERROR` (phase: `REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) — 200 `ProjectDetail` |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Start the next phase (`auto = false`; `RETROSPECTIVE` is always manual) or retry the failed phase when `status = ERROR` — 200 `ProjectDetail` |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{projectId}/progress` | Update a project's completion percentage |
 
@@ -42,10 +41,10 @@ old integer `execution_id`).
 
 The dashboard renders a **single card containing one row per project** (name,
 GitHub icon, and a **Status** column with the completion ring next to the
-finalization control — a rocket to release, an orange ring while in progress, or
-a warning icon on error). Clicking anywhere on a row (except the GitHub icon and
-the finalize control) navigates to `/projects/{projectId}`; the chevron is the
-keyboard-accessible target.
+retrospective control — a rocket to start the last phase, an orange ring while it
+runs or once it is done, or an error tooltip). Clicking anywhere on a row (except
+the GitHub icon and the retrospective control) navigates to
+`/projects/{projectId}`; the chevron is the keyboard-accessible target.
 
 The detail page fetches the project with `GET /api/v1/projects/{projectId}` and
 shows its header plus a **pipeline bar** with one step per phase, in order:
@@ -55,9 +54,9 @@ otherwise; the selected phase is rendered from Markdown below the bar. On load
 the last available phase is selected, and it keeps following new phases as they
 arrive over SSE until the user picks an earlier one. The header shows a single
 ring with the completion (violet, outer arc) and, once the release has started or
-finished, the finalization (orange, inner arc) percentages — no numbers inside.
-Projects created with `auto = true` also show an **Auto** badge next to the
-title.
+finished, the release/retrospective progress (orange, inner arc) percentages — no
+numbers inside. Projects created with `auto = true` also show an **Auto** badge
+next to the title.
 The project name can be edited inline from the detail page header. The document
 `TEXT` columns
 (`user_input`, `requirements`, `code-summary`, `test-summary`, `review`,
@@ -71,7 +70,8 @@ The dashboard's **New** action opens a bottom sheet with two inputs:
 
 - **User input** (required): the free-form brief used by the pipeline.
 - **Auto** (default `false`): tells the external pipeline whether to run every
-  step automatically, one after the other.
+  step automatically, one after the other. The retrospective is always manual,
+  even when `auto = true`.
 
 `POST /api/v1/projects` runs three steps:
 
@@ -159,10 +159,14 @@ phase if all documents exist). The backend returns the status in the project
 payloads and includes it in every `progress` SSE event.
 
 When a project is in `ERROR`, the detail page shows a **Retry** action for the
-failed phase. When `auto = false` and the current status is `<PHASE>_DONE`, it
-also shows a **Play** button that starts the next phase manually. Both use
-`POST /api/v1/projects/{projectId}/{phase}`, which calls the webhook that owns
-that phase (`N8N_REQUIREMENTS_WEBHOOK_URL`, `N8N_CODE_WEBHOOK_URL`,
+failed phase. When the current status is `<PHASE>_DONE` and `auto = false`, it
+shows a **Play** button that starts the next phase manually; for
+`REVIEW_DONE → RETROSPECTIVE` the button uses the rocket icon and is shown even
+with `auto = true`, because the last phase is always launched manually. The
+dashboard shows the same rocket when the status is `REVIEW_DONE`.
+
+Both use `POST /api/v1/projects/{projectId}/{phase}`, which calls the webhook
+that owns that phase (`N8N_REQUIREMENTS_WEBHOOK_URL`, `N8N_CODE_WEBHOOK_URL`,
 `N8N_TEST_WEBHOOK_URL`, `N8N_REVIEW_WEBHOOK_URL`,
 `N8N_RETROSPECTIVE_WEBHOOK_URL`) with:
 
@@ -174,28 +178,19 @@ The backend does **not** change `status` on retry/start: the n8n workflow must
 set it to `<PHASE>_RUNNING` / `<PHASE>_DONE` / `ERROR` (and bump `updated_at`).
 The endpoint returns the current `ProjectDetail`.
 
-### Finalization
+### Retrospective and release
 
-A project that reaches `completion_percentage = 100` can be **finalized**: the
-demo is released as a real, public GitHub repository. The `finalization_percentage`
-column tracks the release progress (`0` = not started, `1..99` = in progress,
-`100` = done) and `final_repo_url` holds the released repository URL.
+The last phase, **`RETROSPECTIVE`**, also releases the demo as a real, public
+GitHub repository; there is no separate finalize endpoint anymore. It is
+triggered through the generic phase endpoint (`.../RETROSPECTIVE`) using
+`N8N_RETROSPECTIVE_WEBHOOK_URL`, either manually (`auto = false` and status
+`REVIEW_DONE`) or as a retry from `ERROR`.
 
-Flow:
-
-1. The UI shows a **Finalize** action only when the project is 100% complete
-   (a rocket in the dashboard).
-2. `POST /api/v1/projects/{projectId}/finalize` validates eligibility (409 if not
-   complete, already finalizing or already finalized), atomically sets
-   `finalization_percentage = 1` and calls the n8n webhook with
-   `{"project_id": "<projects.id UUID>"}` → `204`.
-3. n8n performs the work (create repo, single-commit push) and writes the
-   progress back to PostgreSQL, bumping `updated_at` at each step.
-4. The poller observes the changes and streams `finalization` events over the
-   same SSE channel.
-
-If the webhook cannot be reached, the backend rolls the request back to `0`
-(with `finalize_error`) so the user can retry.
+n8n performs the work (retrospective report, repo creation, push) and writes
+`status`, `finalization_percentage` (`0` = not started, `1..99` = in progress,
+`100` = done), `final_repo_url` and `finalize_error` back to PostgreSQL, bumping
+`updated_at` at each step. The poller observes the changes and streams
+`finalization` events over the same SSE channel.
 
 ## Environment variables
 
@@ -211,7 +206,6 @@ If the webhook cannot be reached, the backend rolls the request back to `0`
 | `CORS_ORIGINS` | Comma-separated list of allowed origins (e.g. `http://localhost:5173`) |
 | `ENABLE_PROGRESS_POLLING` | Poll PostgreSQL for externally written progress updates (default `true`) |
 | `POLL_INTERVAL_SECONDS` | Seconds between progress polls (default `2`) |
-| `N8N_FINALIZE_WEBHOOK_URL` | n8n webhook invoked to start a project finalization (unset ⇒ finalize returns 503) |
 | `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
 | `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation for a newly created project |
 | `N8N_CODE_WEBHOOK_URL` | n8n webhook for the code phase (used by the retry endpoint) |

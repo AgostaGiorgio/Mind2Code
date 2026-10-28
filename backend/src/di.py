@@ -18,7 +18,6 @@ class Container(containers.DeclarativeContainer):
 
     n8n_client = providers.Singleton(
         N8NClient,
-        finalize_url=app_config.n8n_finalize_webhook_url,
         project_title_url=app_config.n8n_project_title_webhook_url,
         requirements_url=app_config.n8n_requirements_webhook_url,
         code_url=app_config.n8n_code_webhook_url,

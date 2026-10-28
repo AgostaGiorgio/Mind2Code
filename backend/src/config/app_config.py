@@ -36,10 +36,6 @@ class AppConfig(BaseSettings):
         description="Seconds between PostgreSQL progress polls",
     )
 
-    n8n_finalize_webhook_url: str | None = Field(
-        default=None,
-        description="n8n webhook URL invoked to start a project finalization",
-    )
     n8n_project_title_webhook_url: str | None = Field(
         default=None,
         description="n8n webhook URL that extracts the project title from the user input",

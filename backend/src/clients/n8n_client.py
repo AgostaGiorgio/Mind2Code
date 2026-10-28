@@ -10,8 +10,8 @@ _MAX_TITLE_LENGTH = 200
 class N8NClient:
     """HTTP client for the n8n workflows used by Mind2Code.
 
-    A single client groups every webhook the backend calls: finalization,
-    project-title extraction and the per-phase workflows.
+    A single client groups every webhook the backend calls: project-title
+    extraction and the per-phase workflows.
     """
 
     def __init__(
@@ -22,11 +22,9 @@ class N8NClient:
         test_url: str | None,
         review_url: str | None,
         retrospective_url: str | None,
-        finalize_url: str | None,
         timeout_seconds: float = 30.0,
     ):
         self.__project_title_url = project_title_url
-        self.__finalize_url = finalize_url
         self.__phase_urls = {
             "REQUIREMENTS": requirements_url,
             "CODE": code_url,
@@ -35,10 +33,6 @@ class N8NClient:
             "RETROSPECTIVE": retrospective_url,
         }
         self.__timeout = timeout_seconds
-
-    @property
-    def finalize_configured(self) -> bool:
-        return bool(self.__finalize_url)
 
     @property
     def project_title_configured(self) -> bool:
@@ -50,21 +44,6 @@ class N8NClient:
 
     def phase_configured(self, phase: str) -> bool:
         return bool(self.__phase_urls.get(phase))
-
-    async def trigger_finalization(self, project_id: str) -> bool:
-        """Start the release workflow. The DB UUID of the project is sent."""
-        if not self.__finalize_url:
-            return False
-
-        response = await self.__post(
-            self.__finalize_url,
-            {"project_id": project_id},
-        )
-        if response is None:
-            return False
-
-        logger.info(f"Finalize webhook triggered for project {project_id}.")
-        return True
 
     async def extract_project_title(self, user_input: str) -> str | None:
         """Ask n8n to derive a project title from the user input."""

@@ -66,8 +66,6 @@ class FakeProjectRepository:
         self.update_calls: list[tuple[UUID, int]] = []
         self.update_name_calls: list[tuple[UUID, str]] = []
         self.create_calls: list[dict] = []
-        self.finalize_requests: list[UUID] = []
-        self.finalize_resets: list[tuple[UUID, str]] = []
         self.list_error: Exception | None = None
 
     async def list_projects(self) -> list[Project]:
@@ -101,33 +99,6 @@ class FakeProjectRepository:
             {"name": name, "user_input": user_input, "auto": auto}
         )
         return ProjectDetail(**project.model_dump(), **self.details[project_id])
-
-    async def request_finalization(self, project_id: UUID) -> Project | None:
-        project = self.projects.get(project_id)
-        if project is None:
-            return None
-        eligible = (
-            project.completion_percentage == 100
-            and project.finalization_percentage == 0
-            and project.final_repo_url is None
-        )
-        if not eligible:
-            return None
-        self.finalize_requests.append(project_id)
-        updated = project.model_copy(
-            update={"finalization_percentage": 1, "finalize_error": None}
-        )
-        self.projects[project_id] = updated
-        return updated
-
-    async def reset_finalization(self, project_id: UUID, finalize_error: str) -> None:
-        project = self.projects.get(project_id)
-        if project is None:
-            return
-        self.finalize_resets.append((project_id, finalize_error))
-        self.projects[project_id] = project.model_copy(
-            update={"finalization_percentage": 0, "finalize_error": finalize_error}
-        )
 
     async def get_latest_updated_at(self) -> datetime | None:
         if not self.projects:
@@ -175,8 +146,6 @@ class FakeN8NClient:
         title_configured: bool = True,
         requirements_ok: bool = True,
         requirements_configured: bool = True,
-        finalize_ok: bool = True,
-        finalize_configured: bool = True,
         phase_ok: bool = True,
         phases_configured: bool = True,
     ):
@@ -184,13 +153,10 @@ class FakeN8NClient:
         self.project_title_configured = title_configured
         self.requirements_ok = requirements_ok
         self.requirements_configured = requirements_configured
-        self.finalize_ok = finalize_ok
-        self.finalize_configured = finalize_configured
         self.phase_ok = phase_ok
         self.phases_configured = phases_configured
         self.title_calls: list[str] = []
         self.requirements_calls: list[str] = []
-        self.finalize_calls: list[str] = []
         self.phase_calls: list[tuple[str, str]] = []
 
     async def extract_project_title(self, user_input: str) -> str | None:
@@ -200,10 +166,6 @@ class FakeN8NClient:
     async def trigger_requirements(self, project_id: str) -> bool:
         self.requirements_calls.append(project_id)
         return self.requirements_ok
-
-    async def trigger_finalization(self, project_id: str) -> bool:
-        self.finalize_calls.append(project_id)
-        return self.finalize_ok
 
     def phase_configured(self, phase: str) -> bool:
         return self.phases_configured

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Check, Pencil, Play, RefreshCw, TriangleAlert, X } from '@lucide/vue'
+import { ArrowLeft, Check, Pencil, Play, RefreshCw, Rocket, TriangleAlert, X } from '@lucide/vue'
 import { getProject, startProjectPhase, updateProjectName } from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
 import { useSse } from '@/composables/useSse'
@@ -144,9 +144,12 @@ const NEXT_PHASE_KEY_BY_STATUS = {
 }
 
 const nextPhase = computed(() => {
-  if (!project.value || project.value.auto) return null
+  if (!project.value) return null
   const key = NEXT_PHASE_KEY_BY_STATUS[project.value.status]
-  return key ? (RETRY_PHASES[key] ?? null) : null
+  if (!key) return null
+  // The retrospective is always launched manually, even in auto mode.
+  if (project.value.auto && key !== 'retrospective') return null
+  return RETRY_PHASES[key] ?? null
 })
 
 const phaseRunning = computed(() => Boolean(project.value?.status?.endsWith('_RUNNING')))
@@ -157,14 +160,16 @@ const awaitingStart = ref(false)
 const retryError = ref('')
 
 // Keep the play button visible (but disabled) after pressing it and while a
-// phase is running, instead of removing it from the bar.
-const showPlay = computed(
-  () =>
-    Boolean(project.value) &&
-    !project.value.auto &&
-    project.value.status !== 'ERROR' &&
-    (nextPhase.value !== null || phaseRunning.value),
-)
+// phase is running, instead of removing it from the bar. In auto mode this only
+// applies to the retrospective, which is always manual.
+const showPlay = computed(() => {
+  if (!project.value || project.value.status === 'ERROR') return false
+  if (nextPhase.value !== null) return true
+  return (
+    phaseRunning.value &&
+    (!project.value.auto || project.value.status === 'RETROSPECTIVE_RUNNING')
+  )
+})
 
 const playLabel = computed(() => {
   if (!nextPhase.value) return 'A phase is running…'
@@ -172,6 +177,12 @@ const playLabel = computed(() => {
     ? `${nextPhase.value.label} starting…`
     : `Start ${nextPhase.value.label} phase`
 })
+
+const playIsRetrospective = computed(
+  () =>
+    nextPhase.value?.value === 'RETROSPECTIVE' ||
+    project.value?.status === 'RETROSPECTIVE_RUNNING',
+)
 
 watch(
   () => project.value?.status,
@@ -194,7 +205,11 @@ const renderedContent = computed(() => renderMarkdown(activeContent.value))
 
 // The finalization arc only matters once the release has started or finished.
 const showFinalization = computed(
-  () => Boolean(project.value?.finalRepoUrl) || (project.value?.finalizationPercentage ?? 0) > 0,
+  () =>
+    Boolean(project.value?.finalRepoUrl) ||
+    (project.value?.finalizationPercentage ?? 0) > 0 ||
+    project.value?.status === 'RETROSPECTIVE_RUNNING' ||
+    project.value?.status === 'RETROSPECTIVE_DONE',
 )
 
 // Select the latest phase with content, unless the user picked another one.
@@ -483,7 +498,17 @@ onMounted(load)
               :title="playLabel"
               @click="startNextPhase"
             >
-              <Play :size="16" fill="currentColor" :class="starting ? 'animate-pulse' : ''" />
+              <Rocket
+                v-if="playIsRetrospective"
+                :size="16"
+                :class="starting ? 'animate-pulse' : ''"
+              />
+              <Play
+                v-else
+                :size="16"
+                fill="currentColor"
+                :class="starting ? 'animate-pulse' : ''"
+              />
             </button>
           </div>
 

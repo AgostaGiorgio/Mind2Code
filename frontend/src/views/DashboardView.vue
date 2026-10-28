@@ -7,7 +7,7 @@ import { useProjectCreation } from '@/composables/useProjectCreation'
 import { isSafeGitHubUrl } from '@/utils/github'
 import GitHubLink from '@/components/ui/GitHubLink.vue'
 import ProgressRing from '@/components/ui/ProgressRing.vue'
-import FinalizeControl from '@/components/ui/FinalizeControl.vue'
+import RetrospectiveControl from '@/components/ui/RetrospectiveControl.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CreateProjectSheet from '@/components/CreateProjectSheet.vue'
@@ -136,7 +136,7 @@ onMounted(() => {
                     <ProgressRing :value="project.completionPercentage" :size="40" />
                   </span>
                   <span class="inline-flex" @click.stop>
-                    <FinalizeControl :project="project" />
+                    <RetrospectiveControl :project="project" />
                   </span>
                 </div>
               </td>

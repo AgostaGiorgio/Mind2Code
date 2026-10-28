@@ -86,43 +86,6 @@ class ProjectRepository:
                 )
                 return None
 
-    async def request_finalization(self, project_id: UUID) -> Project | None:
-        async with self.__postgres_client.async_session() as session:
-            try:
-                async with session.begin():
-                    result = await session.execute(
-                        q.REQUEST_FINALIZATION, {"project_id": project_id}
-                    )
-                    row = result.mappings().first()
-                    if row is None:
-                        logger.warning(
-                            f"Finalization not eligible for project '{project_id}'."
-                        )
-                        return None
-                    logger.info(f"Finalization requested for project '{project_id}'.")
-                    return Project(**row)
-            except (SQLAlchemyError, ValidationError) as e:
-                logger.error(
-                    f"Error requesting finalization for '{project_id}': {e}", exc_info=True
-                )
-                return None
-
-    async def reset_finalization(self, project_id: UUID, finalize_error: str) -> None:
-        async with self.__postgres_client.async_session() as session:
-            try:
-                async with session.begin():
-                    await session.execute(
-                        q.RESET_FINALIZATION,
-                        {"project_id": project_id, "finalize_error": finalize_error},
-                    )
-                    logger.warning(
-                        f"Finalization reset for project '{project_id}': {finalize_error}"
-                    )
-            except SQLAlchemyError as e:
-                logger.error(
-                    f"Error resetting finalization for '{project_id}': {e}", exc_info=True
-                )
-
     async def get_latest_updated_at(self) -> datetime | None:
         async with self.__postgres_client.async_session() as session:
             try:

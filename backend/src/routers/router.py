@@ -3,7 +3,7 @@ import logging
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.db.models.project import (
@@ -17,7 +17,6 @@ from src.db.models.project import (
 from src.di import Container
 from src.services.projects import (
     CreateProjectStatus,
-    FinalizeResult,
     ProjectService,
     RetryPhaseResult,
 )
@@ -82,25 +81,6 @@ async def rename_project(
     return updated
 
 
-@api_router.post("/{project_id}/finalize", status_code=204)
-@inject
-async def finalize_project(
-    project_id: UUID,
-    project_service: ProjectService = Depends(Provide[Container.project_service]),
-) -> Response:
-    result = await project_service.finalize_project(project_id)
-
-    if result is FinalizeResult.OK:
-        return Response(status_code=204)
-    if result is FinalizeResult.NOT_FOUND:
-        raise HTTPException(status_code=404, detail="Project not found.")
-    if result is FinalizeResult.CONFLICT:
-        raise HTTPException(
-            status_code=409, detail="Project is not eligible for finalization."
-        )
-    raise HTTPException(status_code=503, detail="Could not start the finalization workflow.")
-
-
 @api_router.post("/{project_id}/progress", response_model=Project, status_code=200)
 @inject
 async def update_progress(
@@ -114,8 +94,8 @@ async def update_progress(
     return updated
 
 
-# Generic phase retry, e.g. POST /projects/{id}/CODE. It is declared after the
-# specific action routes so /finalize and /progress keep winning the match.
+# Generic phase action, e.g. POST /projects/{id}/CODE. It is declared after the
+# /progress route so the latter keeps winning the match.
 @api_router.post("/{project_id}/{phase}", response_model=ProjectDetail, status_code=200)
 @inject
 async def retry_phase(
@@ -136,10 +116,10 @@ async def retry_phase(
         )
     if outcome.result is RetryPhaseResult.NOT_CONFIGURED:
         raise HTTPException(
-            status_code=503, detail="Phase retry workflow is not configured."
+            status_code=503, detail="Phase workflow is not configured."
         )
     raise HTTPException(
-        status_code=502, detail="Could not start the phase retry workflow."
+        status_code=502, detail="Could not start the phase workflow."
     )
 
 
