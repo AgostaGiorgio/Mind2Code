@@ -481,6 +481,56 @@ def test_retry_phase_webhook_failure_keeps_error(fake_repo, broker):
     assert fake_repo.projects[PROJECT_A_ID].status is ProjectStatus.ERROR
 
 
+def _project_with(status, auto=False):
+    return make_project(PROJECT_A_ID, "Alpha", completion=40).model_copy(
+        update={"status": status, "auto": auto}
+    )
+
+
+def test_start_next_phase_when_auto_disabled(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _project_with(
+        ProjectStatus.REQUIREMENTS_DONE, auto=False
+    )
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/CODE")
+        assert response.status_code == 200
+        # Status is owned by n8n: the backend does not change it.
+        assert response.json()["status"] == "REQUIREMENTS_DONE"
+    assert n8n.phase_calls == [("CODE", str(PROJECT_A_ID))]
+
+
+def test_start_next_phase_blocked_when_auto_enabled(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _project_with(
+        ProjectStatus.REQUIREMENTS_DONE, auto=True
+    )
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/CODE")
+        assert response.status_code == 409
+    assert n8n.phase_calls == []
+
+
+def test_start_next_phase_rejects_skipped_phase(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _project_with(
+        ProjectStatus.REQUIREMENTS_DONE, auto=False
+    )
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/TEST")
+        assert response.status_code == 409
+    assert n8n.phase_calls == []
+
+
+def test_start_next_phase_requires_a_done_status(fake_repo, broker):
+    fake_repo.projects[PROJECT_A_ID] = _project_with(None, auto=False)
+    n8n = FakeN8NClient()
+    with app_client(fake_repo, broker, n8n) as client:
+        response = client.post(f"/api/v1/projects/{PROJECT_A_ID}/REQUIREMENTS")
+        assert response.status_code == 409
+    assert n8n.phase_calls == []
+
+
 # --------------------------------------------------------------------------- #
 # Health, CORS and error handling (T-2, T-11)
 # --------------------------------------------------------------------------- #

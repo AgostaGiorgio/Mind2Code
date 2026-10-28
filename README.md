@@ -31,7 +31,7 @@ All REST endpoints are prefixed with `/api/v1`.
 | `GET` | `/api/v1/projects/{projectId}` | Fetch a single project with its documents (`finalReview`, `userInput`, `requirements`, `codeSummary`, `testSummary`) |
 | `PATCH` | `/api/v1/projects/{projectId}` | Rename a project (`{ "name": "..." }`) |
 | `POST` | `/api/v1/projects/{projectId}/finalize` | Start finalization (release) — 204 |
-| `POST` | `/api/v1/projects/{projectId}/{phase}` | Retry a failed phase when `status = ERROR` (phase: `REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) — 200 `ProjectDetail` |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Start the next phase when `auto = false`, or retry the failed phase when `status = ERROR` (phase: `REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) — 200 `ProjectDetail` |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{projectId}/progress` | Update a project's completion percentage |
 
@@ -159,9 +159,10 @@ phase if all documents exist). The backend returns the status in the project
 payloads and includes it in every `progress` SSE event.
 
 When a project is in `ERROR`, the detail page shows a **Retry** action for the
-failed phase. `POST /api/v1/projects/{projectId}/{phase}` checks that the status
-is `ERROR` and calls the webhook that owns that phase
-(`N8N_REQUIREMENTS_WEBHOOK_URL`, `N8N_CODE_WEBHOOK_URL`,
+failed phase. When `auto = false` and the current status is `<PHASE>_DONE`, it
+also shows a **Play** button that starts the next phase manually. Both use
+`POST /api/v1/projects/{projectId}/{phase}`, which calls the webhook that owns
+that phase (`N8N_REQUIREMENTS_WEBHOOK_URL`, `N8N_CODE_WEBHOOK_URL`,
 `N8N_TEST_WEBHOOK_URL`, `N8N_REVIEW_WEBHOOK_URL`,
 `N8N_RETROSPECTIVE_WEBHOOK_URL`) with:
 
@@ -169,9 +170,9 @@ is `ERROR` and calls the webhook that owns that phase
 { "project_id": "<uuid>" }
 ```
 
-The backend does **not** change `status` on retry: the n8n workflow must set it
-to `<PHASE>_RUNNING` / `<PHASE>_DONE` / `ERROR` (and bump `updated_at`). The
-endpoint returns the current `ProjectDetail`.
+The backend does **not** change `status` on retry/start: the n8n workflow must
+set it to `<PHASE>_RUNNING` / `<PHASE>_DONE` / `ERROR` (and bump `updated_at`).
+The endpoint returns the current `ProjectDetail`.
 
 ### Finalization
 

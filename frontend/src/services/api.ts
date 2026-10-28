@@ -113,7 +113,7 @@ export async function finalizeProject(projectId: string): Promise<void> {
   }
 }
 
-export async function retryProjectPhase(
+export async function startProjectPhase(
   projectId: string,
   phase: RetryPhase,
 ): Promise<ProjectDetail> {

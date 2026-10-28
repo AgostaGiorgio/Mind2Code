@@ -131,7 +131,8 @@ async def retry_phase(
         raise HTTPException(status_code=404, detail="Project not found.")
     if outcome.result is RetryPhaseResult.CONFLICT:
         raise HTTPException(
-            status_code=409, detail="Only a project in ERROR status can retry a phase."
+            status_code=409,
+            detail="This phase cannot be started in the current project state.",
         )
     if outcome.result is RetryPhaseResult.NOT_CONFIGURED:
         raise HTTPException(

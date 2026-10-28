@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Check, Pencil, RefreshCw, TriangleAlert, X } from '@lucide/vue'
-import { getProject, retryProjectPhase, updateProjectName } from '@/services/api'
+import { ArrowLeft, Check, Pencil, Play, RefreshCw, TriangleAlert, X } from '@lucide/vue'
+import { getProject, startProjectPhase, updateProjectName } from '@/services/api'
 import { renderMarkdown } from '@/utils/markdown'
 import { useSse } from '@/composables/useSse'
 import { useToast } from '@/composables/useToast'
@@ -134,8 +134,51 @@ const failedPhase = computed(() =>
   errorPhase.value ? (RETRY_PHASES[errorPhase.value] ?? null) : null,
 )
 
+// Manual mode (auto = false): after a phase is DONE the next one can be started
+// explicitly. Nothing to start while a phase is RUNNING or after RETROSPECTIVE.
+const NEXT_PHASE_KEY_BY_STATUS = {
+  REQUIREMENTS_DONE: 'codeSummary',
+  CODE_DONE: 'testSummary',
+  TEST_DONE: 'finalReview',
+  REVIEW_DONE: 'retrospective',
+}
+
+const nextPhase = computed(() => {
+  if (!project.value || project.value.auto) return null
+  const key = NEXT_PHASE_KEY_BY_STATUS[project.value.status]
+  return key ? (RETRY_PHASES[key] ?? null) : null
+})
+
+const phaseRunning = computed(() => Boolean(project.value?.status?.endsWith('_RUNNING')))
+
 const retrying = ref(false)
+const starting = ref(false)
+const awaitingStart = ref(false)
 const retryError = ref('')
+
+// Keep the play button visible (but disabled) after pressing it and while a
+// phase is running, instead of removing it from the bar.
+const showPlay = computed(
+  () =>
+    Boolean(project.value) &&
+    !project.value.auto &&
+    project.value.status !== 'ERROR' &&
+    (nextPhase.value !== null || phaseRunning.value),
+)
+
+const playLabel = computed(() => {
+  if (!nextPhase.value) return 'A phase is running…'
+  return awaitingStart.value
+    ? `${nextPhase.value.label} starting…`
+    : `Start ${nextPhase.value.label} phase`
+})
+
+watch(
+  () => project.value?.status,
+  () => {
+    awaitingStart.value = false
+  },
+)
 
 const lastAvailablePhase = computed(() => {
   for (let i = PHASES.length - 1; i >= 0; i -= 1) {
@@ -204,7 +247,7 @@ async function retryFailedPhase() {
   retrying.value = true
   retryError.value = ''
   try {
-    project.value = await retryProjectPhase(projectId, phase.value)
+    project.value = await startProjectPhase(projectId, phase.value)
     syncActivePhase()
     toast.success(`${phase.label} phase restarted.`)
   } catch (e) {
@@ -213,6 +256,24 @@ async function retryFailedPhase() {
     await refresh()
   } finally {
     retrying.value = false
+  }
+}
+
+async function startNextPhase() {
+  const phase = nextPhase.value
+  if (!phase || starting.value) return
+
+  starting.value = true
+  try {
+    project.value = await startProjectPhase(projectId, phase.value)
+    syncActivePhase()
+    awaitingStart.value = true
+    toast.success(`${phase.label} phase started.`)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Could not start the phase.')
+    await refresh()
+  } finally {
+    starting.value = false
   }
 }
 
@@ -404,11 +465,27 @@ onMounted(load)
             </button>
           </div>
 
-          <PhaseStepper
-            :model-value="activePhase"
-            :options="phaseOptions"
-            @update:model-value="selectPhase"
-          />
+          <div class="flex items-center gap-1.5">
+            <div class="min-w-0 flex-1">
+              <PhaseStepper
+                :model-value="activePhase"
+                :options="phaseOptions"
+                @update:model-value="selectPhase"
+              />
+            </div>
+
+            <button
+              v-if="showPlay"
+              type="button"
+              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-white shadow-app transition-colors hover:bg-brand-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+              :disabled="!nextPhase || starting || awaitingStart"
+              :aria-label="playLabel"
+              :title="playLabel"
+              @click="startNextPhase"
+            >
+              <Play :size="16" fill="currentColor" :class="starting ? 'animate-pulse' : ''" />
+            </button>
+          </div>
 
           <div
             v-if="activeContent"

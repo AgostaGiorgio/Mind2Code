@@ -19,6 +19,13 @@ from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
 
+_NEXT_PHASE_BY_STATUS = {
+    ProjectStatus.REQUIREMENTS_DONE: RetryPhase.CODE,
+    ProjectStatus.CODE_DONE: RetryPhase.TEST,
+    ProjectStatus.TEST_DONE: RetryPhase.REVIEW,
+    ProjectStatus.REVIEW_DONE: RetryPhase.RETROSPECTIVE,
+}
+
 
 class FinalizeResult(str, Enum):
     OK = "ok"
@@ -115,7 +122,13 @@ class ProjectService:
         project = await self.__project_repository.get_project_detail(project_id)
         if project is None:
             return RetryPhaseOutcome(RetryPhaseResult.NOT_FOUND)
-        if project.status is not ProjectStatus.ERROR:
+
+        can_retry = project.status == ProjectStatus.ERROR
+        can_start_next = (
+            not project.auto
+            and _NEXT_PHASE_BY_STATUS.get(project.status) == phase
+        )
+        if not (can_retry or can_start_next):
             return RetryPhaseOutcome(RetryPhaseResult.CONFLICT)
 
         if not self.__n8n_client.phase_configured(phase.value):

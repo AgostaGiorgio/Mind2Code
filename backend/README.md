@@ -81,7 +81,7 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
 | `POST` | `/api/v1/projects/{projectId}/progress` | Update completion percentage |
-| `POST` | `/api/v1/projects/{projectId}/{phase}` | Retry a failed phase (`REQUIREMENTS`, `CODE`, `TEST`, `REVIEW`, `RETROSPECTIVE`) |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Start the next phase (`auto = false`) or retry a failed phase (`ERROR`) |
 
 ### SSE event contract
 
