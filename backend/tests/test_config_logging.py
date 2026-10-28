@@ -11,29 +11,49 @@ from src.di import Container
 from src.main import APP_VERSION, app, container
 
 
+PG = {
+    "postgresql_user": "u",
+    "postgresql_password": "p",
+    "postgresql_host": "h",
+    "postgresql_port": "5432",
+    "postgresql_database": "db",
+}
+
+
 def test_cors_origins_parsed_from_comma_string():
-    config = AppConfig(database_url="postgresql+asyncpg://u:p@h:5432/db", cors_origins="http://a, http://b ")
+    config = AppConfig(**PG, cors_origins="http://a, http://b ")
     assert config.cors_origins == ["http://a", "http://b"]
 
 
 def test_cors_origins_accepts_list():
-    config = AppConfig(database_url="postgresql+asyncpg://u:p@h:5432/db", cors_origins=["http://a"])
+    config = AppConfig(**PG, cors_origins=["http://a"])
     assert config.cors_origins == ["http://a"]
+
+
+def test_postgresql_connection_uri_from_parts():
+    config = AppConfig(**PG)
+    assert config.postgresql_connection_uri == "postgresql+asyncpg://u:p@h:5432/db"
 
 
 def test_load_from_yaml(tmp_path):
     yaml_file = tmp_path / "cfg.yaml"
-    yaml_file.write_text('database_url: "postgresql+asyncpg://u:p@h:5432/db"\n')
+    yaml_file.write_text(
+        "postgresql_user: u\n"
+        "postgresql_password: p\n"
+        "postgresql_host: h\n"
+        "postgresql_port: '5432'\n"
+        "postgresql_database: db\n"
+    )
     config = AppConfig.load_from_yaml(str(yaml_file))
-    assert config.database_url == "postgresql+asyncpg://u:p@h:5432/db"
+    assert config.postgresql_connection_uri == "postgresql+asyncpg://u:p@h:5432/db"
 
 
 def test_load_from_empty_yaml(tmp_path):
     yaml_file = tmp_path / "empty.yaml"
     yaml_file.write_text("")
     config = AppConfig.load_from_yaml(str(yaml_file))
-    # Falls back to the environment (.env) for the required DATABASE_URL.
-    assert config.database_url.startswith("postgresql+asyncpg://")
+    # Falls back to the environment (.env) for the required POSTGRESQL_* fields.
+    assert config.postgresql_connection_uri.startswith("postgresql+asyncpg://")
 
 
 def test_container_wires_providers():
@@ -52,7 +72,7 @@ def test_app_version_and_routes_registered():
     assert "/health" in paths
     assert "/api/v1/projects" in paths
     assert "/api/v1/events" in paths
-    assert "/api/v1/projects/{execution_id}/progress" in paths
+    assert "/api/v1/projects/{project_id}/progress" in paths
 
 
 def test_container_override_project_repository():

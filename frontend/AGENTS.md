@@ -3,7 +3,7 @@
 ## Structure
 
 - Vue 3 (`<script setup>`) + Vite + Vue Router + Tailwind v3 + axios + lucide.
-- `src/App.vue` — shell: `AppHeader` + `RouterView` + `AppNavbar` + `ToastHost`.
+- `src/App.vue` — shell: `AppHeader` + `RouterView` + `ToastHost`.
 - `src/views/` — one file per route; `src/components/` — feature components;
   `src/components/ui/` — reusable primitives (badge, field, bottom sheet, ...).
 - `src/services/api.js` — the only place that talks HTTP.
@@ -21,8 +21,8 @@
 
 ## Conventions
 
-- **Mobile-first.** Design at the base breakpoint, enhance with `lg:`. Keep content
-  clear of the bottom navbar (`pb-24`/`pb-36`) and use `env(safe-area-inset-*)`.
+- **Mobile-first.** Design at the base breakpoint, enhance with `lg:`. Use
+  `env(safe-area-inset-*)` for spacing that touches the screen edges.
 - **Cards** use `.app-card rounded-app p-5` (gradient border + blur, defined in
   `src/style.css`).
 - Use the `brand-*` tokens only (`bg-brand-background`, `bg-brand-surface`,

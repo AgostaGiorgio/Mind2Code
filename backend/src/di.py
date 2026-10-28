@@ -1,6 +1,6 @@
 from dependency_injector import containers, providers
 
-from src.clients.finalize_webhook import FinalizeWebhookClient
+from src.clients.n8n_client import N8NClient
 from src.clients.postgres_client import PostgresClient
 from src.config.app_config import app_config
 from src.repositories.projects import ProjectRepository
@@ -11,15 +11,20 @@ from src.sse.broker import EventBroker
 
 class Container(containers.DeclarativeContainer):
     postgres_client = providers.Singleton(
-        PostgresClient, db_url=app_config.database_url
+        PostgresClient, db_url=app_config.postgresql_connection_uri
     )
 
     event_broker = providers.Singleton(EventBroker)
 
-    finalize_webhook = providers.Singleton(
-        FinalizeWebhookClient,
-        url=app_config.n8n_finalize_webhook_url,
-        timeout_seconds=app_config.finalize_webhook_timeout_seconds,
+    n8n_client = providers.Singleton(
+        N8NClient,
+        project_title_url=app_config.n8n_project_title_webhook_url,
+        requirements_url=app_config.n8n_requirements_webhook_url,
+        code_url=app_config.n8n_code_webhook_url,
+        test_url=app_config.n8n_test_webhook_url,
+        review_url=app_config.n8n_review_webhook_url,
+        retrospective_url=app_config.n8n_retrospective_webhook_url,
+        timeout_seconds=app_config.n8n_timeout_seconds,
     )
 
     project_repository = providers.Factory(
@@ -30,7 +35,7 @@ class Container(containers.DeclarativeContainer):
         ProjectService,
         project_repository=project_repository,
         event_broker=event_broker,
-        finalize_webhook=finalize_webhook,
+        n8n_client=n8n_client,
     )
 
     progress_poller = providers.Factory(

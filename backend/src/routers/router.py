@@ -1,18 +1,25 @@
 import asyncio
 import logging
+from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.db.models.project import (
     ProgressUpdateRequest,
     Project,
+    ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
+    RetryPhase,
 )
 from src.di import Container
-from src.services.projects import FinalizeResult, ProjectService
+from src.services.projects import (
+    CreateProjectStatus,
+    ProjectService,
+    RetryPhaseResult,
+)
 from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
@@ -28,61 +35,92 @@ async def get_projects(
     return await project_service.list_projects()
 
 
-@api_router.get("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@api_router.post("", response_model=ProjectDetail, status_code=201)
 @inject
-async def get_project_detail(
-    execution_id: int,
+async def create_project(
+    payload: ProjectCreateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectDetail:
-    project = await project_service.get_project_detail(execution_id)
+    outcome = await project_service.create_project(payload)
+
+    if outcome.status is CreateProjectStatus.CREATED and outcome.project is not None:
+        return outcome.project
+    if outcome.status is CreateProjectStatus.NOT_CONFIGURED:
+        raise HTTPException(
+            status_code=503, detail="Project creation workflow is not configured."
+        )
+    if outcome.status is CreateProjectStatus.TITLE_EXTRACTION_FAILED:
+        raise HTTPException(
+            status_code=502, detail="Could not extract the project title."
+        )
+    raise HTTPException(status_code=500, detail="Could not create the project.")
+
+
+@api_router.get("/{project_id}", response_model=ProjectDetail, status_code=200)
+@inject
+async def get_project_detail(
+    project_id: UUID,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    project = await project_service.get_project_detail(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return project
 
 
-@api_router.patch("/{execution_id}", response_model=ProjectDetail, status_code=200)
+@api_router.patch("/{project_id}", response_model=ProjectDetail, status_code=200)
 @inject
 async def rename_project(
-    execution_id: int,
+    project_id: UUID,
     payload: ProjectNameUpdateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> ProjectDetail:
-    updated = await project_service.rename_project(execution_id, payload)
+    updated = await project_service.rename_project(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return updated
 
 
-@api_router.post("/{execution_id}/finalize", status_code=204)
-@inject
-async def finalize_project(
-    execution_id: int,
-    project_service: ProjectService = Depends(Provide[Container.project_service]),
-) -> Response:
-    result = await project_service.finalize_project(execution_id)
-
-    if result is FinalizeResult.OK:
-        return Response(status_code=204)
-    if result is FinalizeResult.NOT_FOUND:
-        raise HTTPException(status_code=404, detail="Project not found.")
-    if result is FinalizeResult.CONFLICT:
-        raise HTTPException(
-            status_code=409, detail="Project is not eligible for finalization."
-        )
-    raise HTTPException(status_code=503, detail="Could not start the finalization workflow.")
-
-
-@api_router.post("/{execution_id}/progress", response_model=Project, status_code=200)
+@api_router.post("/{project_id}/progress", response_model=Project, status_code=200)
 @inject
 async def update_progress(
-    execution_id: int,
+    project_id: UUID,
     payload: ProgressUpdateRequest,
     project_service: ProjectService = Depends(Provide[Container.project_service]),
 ) -> Project:
-    updated = await project_service.update_progress(execution_id, payload)
+    updated = await project_service.update_progress(project_id, payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return updated
+
+
+# Generic phase action, e.g. POST /projects/{id}/CODE. It is declared after the
+# /progress route so the latter keeps winning the match.
+@api_router.post("/{project_id}/{phase}", response_model=ProjectDetail, status_code=200)
+@inject
+async def retry_phase(
+    project_id: UUID,
+    phase: RetryPhase,
+    project_service: ProjectService = Depends(Provide[Container.project_service]),
+) -> ProjectDetail:
+    outcome = await project_service.retry_phase(project_id, phase)
+
+    if outcome.result is RetryPhaseResult.OK and outcome.project is not None:
+        return outcome.project
+    if outcome.result is RetryPhaseResult.NOT_FOUND:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    if outcome.result is RetryPhaseResult.CONFLICT:
+        raise HTTPException(
+            status_code=409,
+            detail="This phase cannot be started in the current project state.",
+        )
+    if outcome.result is RetryPhaseResult.NOT_CONFIGURED:
+        raise HTTPException(
+            status_code=503, detail="Phase workflow is not configured."
+        )
+    raise HTTPException(
+        status_code=502, detail="Could not start the phase workflow."
+    )
 
 
 events_router = APIRouter(tags=["events"])

@@ -1,69 +1,57 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronRight, FolderOpen, RefreshCw } from '@lucide/vue'
+import { ChevronRight, FolderOpen, Plus, RefreshCw } from '@lucide/vue'
 import { useProjectsStore } from '@/stores/projects'
-import { useSse } from '@/composables/useSse'
+import { useProjectCreation } from '@/composables/useProjectCreation'
 import { isSafeGitHubUrl } from '@/utils/github'
 import GitHubLink from '@/components/ui/GitHubLink.vue'
 import ProgressRing from '@/components/ui/ProgressRing.vue'
-import FinalizeControl from '@/components/ui/FinalizeControl.vue'
+import RetrospectiveControl from '@/components/ui/RetrospectiveControl.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import CreateProjectSheet from '@/components/CreateProjectSheet.vue'
 
 const store = useProjectsStore()
 const { state, list, hasProjects } = store
-const { status } = useSse(store.applyProgressEvent, store.applyFinalizationEvent)
 
 const router = useRouter()
+const createOpen = ref(false)
+const projectCreation = useProjectCreation()
 
-function goToDetail(executionId) {
-  router.push(`/projects/${executionId}`)
+function goToDetail(projectId) {
+  router.push(`/projects/${projectId}`)
+}
+
+function handleCreate(payload) {
+  createOpen.value = false
+  projectCreation.start(payload)
+  router.push('/projects/new')
 }
 
 onMounted(() => {
   store.load()
 })
-
-const statusLabel = {
-  connecting: 'Connecting',
-  connected: 'Connected',
-  reconnecting: 'Reconnecting',
-  disconnected: 'Disconnected',
-}
-
-const statusClass = {
-  connecting: 'bg-brand-secondary/20 text-brand-secondary',
-  connected: 'bg-emerald-500/20 text-emerald-400',
-  reconnecting: 'bg-amber-500/20 text-amber-400',
-  disconnected: 'bg-red-500/20 text-red-400',
-}
 </script>
 
 <template>
   <main class="flex w-full flex-1 flex-col px-4">
-    <div class="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 py-4">
-      <div class="flex items-center justify-between gap-4">
+    <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 py-4">
+      <div class="flex items-center justify-between gap-3">
         <h1 class="text-xl font-extrabold tracking-tight text-brand-textMain">
           Projects
         </h1>
 
-        <div
-          class="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
-          :class="statusClass[status]"
-          aria-live="polite"
-          aria-atomic="true"
+        <button
+          type="button"
+          class="inline-flex min-h-[40px] items-center gap-1.5 rounded-app bg-brand-primary px-3 text-xs font-semibold text-white transition-colors hover:bg-brand-primary/90"
+          aria-label="New project"
+          @click="createOpen = true"
         >
-          <span class="relative flex h-2 w-2">
-            <span
-              v-if="status !== 'connected'"
-              class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-              :class="status === 'disconnected' ? 'bg-red-400' : 'bg-brand-secondary'"
-            />
-            <span class="relative inline-flex h-2 w-2 rounded-full" :class="status === 'connected' ? 'bg-emerald-400' : status === 'disconnected' ? 'bg-red-400' : 'bg-brand-secondary'" />
-          </span>
-          {{ statusLabel[status] }}
-        </div>
+          <Plus :size="16" />
+          <span class="sm:hidden">New</span>
+          <span class="hidden sm:inline">New project</span>
+        </button>
       </div>
 
       <!-- Loading state -->
@@ -120,9 +108,9 @@ const statusClass = {
           <tbody>
             <tr
               v-for="project in list"
-              :key="project.executionId"
+              :key="project.id"
               class="cursor-pointer border-t border-white/5 transition-colors hover:bg-brand-surface/40"
-              @click="goToDetail(project.executionId)"
+              @click="goToDetail(project.id)"
             >
               <td class="px-2 py-3">
                 <div class="flex items-center gap-3">
@@ -148,14 +136,14 @@ const statusClass = {
                     <ProgressRing :value="project.completionPercentage" :size="40" />
                   </span>
                   <span class="inline-flex" @click.stop>
-                    <FinalizeControl :project="project" />
+                    <RetrospectiveControl :project="project" />
                   </span>
                 </div>
               </td>
 
               <td class="px-2 py-3 text-right">
                 <RouterLink
-                  :to="`/projects/${project.executionId}`"
+                  :to="`/projects/${project.id}`"
                   class="inline-flex h-10 w-10 items-center justify-center rounded-full text-brand-textMuted transition-colors hover:bg-brand-surface/60 hover:text-brand-textMain"
                   :aria-label="`View details for ${project.name}`"
                   @click.stop
@@ -168,5 +156,11 @@ const statusClass = {
         </table>
       </section>
     </div>
+
+    <CreateProjectSheet
+      :open="createOpen"
+      @close="createOpen = false"
+      @create="handleCreate"
+    />
   </main>
 </template>

@@ -11,7 +11,18 @@ class AppConfig(BaseSettings):
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]
 
-    database_url: str = Field(..., description="PostgreSQL async connection URI (postgresql+asyncpg://...)")
+    postgresql_user: str = Field(..., description="PostgreSQL user")
+    postgresql_password: str = Field(..., description="PostgreSQL password")
+    postgresql_host: str = Field(..., description="PostgreSQL host")
+    postgresql_port: str = Field(..., description="PostgreSQL port")
+    postgresql_database: str = Field(..., description="PostgreSQL database name")
+
+    @property
+    def postgresql_connection_uri(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.postgresql_user}:{self.postgresql_password}@"
+            f"{self.postgresql_host}:{self.postgresql_port}/{self.postgresql_database}"
+        )
 
     log_level: str = Field(default="INFO", description="Python logging level")
 
@@ -25,14 +36,34 @@ class AppConfig(BaseSettings):
         description="Seconds between PostgreSQL progress polls",
     )
 
-    n8n_finalize_webhook_url: str | None = Field(
+    n8n_project_title_webhook_url: str | None = Field(
         default=None,
-        description="n8n webhook URL invoked to start a project finalization",
+        description="n8n webhook URL that extracts the project title from the user input",
     )
-    finalize_webhook_timeout_seconds: float = Field(
-        default=10.0,
+    n8n_requirements_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts requirements generation for a project",
+    )
+    n8n_code_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the code phase",
+    )
+    n8n_test_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the test phase",
+    )
+    n8n_review_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the review phase",
+    )
+    n8n_retrospective_webhook_url: str | None = Field(
+        default=None,
+        description="n8n webhook URL that starts the retrospective phase",
+    )
+    n8n_timeout_seconds: float = Field(
+        default=120.0,
         gt=0,
-        description="Timeout for the n8n finalize webhook call",
+        description="Timeout shared by every n8n webhook call",
     )
 
     app_url: str = "http://localhost:8000"

@@ -6,14 +6,19 @@ in PostgreSQL and the backend still broadcasts a ``progress`` event.
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from src.services.progress_poller import ProgressPoller
 from src.sse.broker import EventBroker
 from tests.conftest import FakeProjectRepository, make_project
 
+PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
+
 
 def _repo_with(completion=40, updated_at=None):
-    project = make_project(101, "Alpha", completion=completion, updated_at=updated_at)
+    project = make_project(
+        PROJECT_ID, "Alpha", completion=completion, updated_at=updated_at
+    )
     return FakeProjectRepository([project]), project
 
 
@@ -43,7 +48,7 @@ def test_poll_publishes_externally_updated_rows():
 
         q = broker.subscribe()
         # Simulate an external writer updating the row directly in PostgreSQL.
-        repo.projects[101] = repo.projects[101].model_copy(
+        repo.projects[PROJECT_ID] = repo.projects[PROJECT_ID].model_copy(
             update={
                 "completion_percentage": 75,
                 "updated_at": datetime.now(timezone.utc),
@@ -52,7 +57,10 @@ def test_poll_publishes_externally_updated_rows():
         await poller.poll_once()
         await poller.stop()
 
-        assert q.get_nowait() == ("progress", '{"executionId":101,"completionPercentage":75}')
+        assert q.get_nowait() == (
+            "progress",
+            f'{{"projectId":"{PROJECT_ID}","completionPercentage":75,"status":null}}',
+        )
         name, payload = q.get_nowait()
         assert name == "finalization"
         assert '"finalizationPercentage":0' in payload
@@ -68,7 +76,7 @@ def test_poll_advances_watermark_without_republishing():
         poller = ProgressPoller(repo, broker, interval_seconds=60)
         await poller.start()
 
-        repo.projects[101] = project.model_copy(
+        repo.projects[PROJECT_ID] = project.model_copy(
             update={
                 "completion_percentage": 75,
                 "updated_at": datetime.now(timezone.utc),
