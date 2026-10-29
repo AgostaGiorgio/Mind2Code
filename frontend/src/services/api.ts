@@ -1,11 +1,13 @@
 import axios, { AxiosError, type AxiosInstance } from 'axios'
 import type {
   ApiError,
+  CreateProjectPayload,
   FinalizationEvent,
   ProgressEvent,
   Project,
   ProjectDetail,
   ProgressUpdatePayload,
+  RetryPhase,
 } from '@/types'
 
 const apiClient: AxiosInstance = axios.create({
@@ -28,8 +30,11 @@ export class ProjectApiError extends Error implements ApiError {
 
 function normalizeError(error: unknown): ProjectApiError {
   if (error instanceof AxiosError && error.response) {
-    const data = error.response.data as { error?: { message?: string } } | undefined
-    const message = data?.error?.message ?? error.message
+    const data = error.response.data as
+      | { error?: { message?: string }; detail?: unknown }
+      | undefined
+    const detail = typeof data?.detail === 'string' ? data.detail : undefined
+    const message = data?.error?.message ?? detail ?? error.message
     return new ProjectApiError(error.response.status, message)
   }
   if (error instanceof Error) {
@@ -47,9 +52,22 @@ export async function getProjects(): Promise<Project[]> {
   }
 }
 
-export async function getProject(executionId: number): Promise<ProjectDetail> {
+export async function getProject(projectId: string): Promise<ProjectDetail> {
   try {
-    const { data } = await apiClient.get<ProjectDetail>(`/api/v1/projects/${executionId}`)
+    const { data } = await apiClient.get<ProjectDetail>(`/api/v1/projects/${projectId}`)
+    return data
+  } catch (error) {
+    throw normalizeError(error)
+  }
+}
+
+export async function createProject(payload: CreateProjectPayload): Promise<ProjectDetail> {
+  try {
+    // The backend calls two n8n webhooks synchronously (title extraction can be
+    // slow); allow well above the backend N8N_TIMEOUT_SECONDS.
+    const { data } = await apiClient.post<ProjectDetail>('/api/v1/projects', payload, {
+      timeout: 1200000,
+    })
     return data
   } catch (error) {
     throw normalizeError(error)
@@ -57,11 +75,11 @@ export async function getProject(executionId: number): Promise<ProjectDetail> {
 }
 
 export async function updateProjectName(
-  executionId: number,
+  projectId: string,
   name: string,
 ): Promise<ProjectDetail> {
   try {
-    const { data } = await apiClient.patch<ProjectDetail>(`/api/v1/projects/${executionId}`, { name })
+    const { data } = await apiClient.patch<ProjectDetail>(`/api/v1/projects/${projectId}`, { name })
     return data
   } catch (error) {
     throw normalizeError(error)
@@ -69,13 +87,13 @@ export async function updateProjectName(
 }
 
 export async function postProgress(
-  executionId: number,
+  projectId: string,
   completionPercentage: number,
 ): Promise<Project> {
   try {
     const payload: ProgressUpdatePayload = { completionPercentage }
     const { data } = await apiClient.post<Project>(
-      `/api/v1/projects/${executionId}/progress`,
+      `/api/v1/projects/${projectId}/progress`,
       payload,
     )
     return data
@@ -84,9 +102,17 @@ export async function postProgress(
   }
 }
 
-export async function finalizeProject(executionId: number): Promise<void> {
+export async function startProjectPhase(
+  projectId: string,
+  phase: RetryPhase,
+): Promise<ProjectDetail> {
   try {
-    await apiClient.post(`/api/v1/projects/${executionId}/finalize`)
+    const { data } = await apiClient.post<ProjectDetail>(
+      `/api/v1/projects/${projectId}/${phase}`,
+      null,
+      { timeout: 1200000 },
+    )
+    return data
   } catch (error) {
     throw normalizeError(error)
   }
@@ -102,12 +128,13 @@ export function parseProgressEvent(data: string): ProgressEvent | null {
     if (
       parsed &&
       typeof parsed === 'object' &&
-      'executionId' in parsed &&
+      'projectId' in parsed &&
       'completionPercentage' in parsed &&
-      typeof (parsed as { executionId: unknown }).executionId === 'number' &&
+      typeof (parsed as { projectId: unknown }).projectId === 'string' &&
       typeof (parsed as { completionPercentage: unknown }).completionPercentage === 'number'
     ) {
-      return parsed as ProgressEvent
+      const status = (parsed as { status?: ProgressEvent['status'] }).status ?? null
+      return { ...(parsed as ProgressEvent), status }
     }
   } catch {
     // malformed payload: ignore
@@ -121,9 +148,9 @@ export function parseFinalizationEvent(data: string): FinalizationEvent | null {
     if (
       parsed &&
       typeof parsed === 'object' &&
-      'executionId' in parsed &&
+      'projectId' in parsed &&
       'finalizationPercentage' in parsed &&
-      typeof (parsed as { executionId: unknown }).executionId === 'number' &&
+      typeof (parsed as { projectId: unknown }).projectId === 'string' &&
       typeof (parsed as { finalizationPercentage: unknown }).finalizationPercentage ===
         'number'
     ) {

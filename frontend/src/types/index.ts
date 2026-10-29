@@ -1,10 +1,26 @@
+export type ProjectStatus =
+  | 'ERROR'
+  | 'REQUIREMENTS_RUNNING'
+  | 'REQUIREMENTS_DONE'
+  | 'CODE_RUNNING'
+  | 'CODE_DONE'
+  | 'TEST_RUNNING'
+  | 'TEST_DONE'
+  | 'REVIEW_RUNNING'
+  | 'REVIEW_DONE'
+  | 'RETROSPECTIVE_RUNNING'
+  | 'RETROSPECTIVE_DONE'
+
+export type RetryPhase = 'REQUIREMENTS' | 'CODE' | 'TEST' | 'REVIEW' | 'RETROSPECTIVE'
+
 export interface Project {
   id: string
-  executionId: number
   name: string
   githubUrl: string
   completionPercentage: number
   finalizationPercentage: number
+  auto: boolean
+  status: ProjectStatus | null
   finalRepoUrl: string | null
   finalizeError: string | null
   createdAt: string
@@ -21,12 +37,13 @@ export interface ProjectDetail extends Project {
 }
 
 export interface ProgressEvent {
-  executionId: number
+  projectId: string
   completionPercentage: number
+  status: ProjectStatus | null
 }
 
 export interface FinalizationEvent {
-  executionId: number
+  projectId: string
   finalizationPercentage: number
   finalRepoUrl: string | null
   finalizeError: string | null
@@ -34,6 +51,11 @@ export interface FinalizationEvent {
 
 export interface ProgressUpdatePayload {
   completionPercentage: number
+}
+
+export interface CreateProjectPayload {
+  userInput: string
+  auto: boolean
 }
 
 export interface ApiError {

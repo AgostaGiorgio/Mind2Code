@@ -11,12 +11,15 @@ client (which would block until the heartbeats eventually complete).
 """
 
 import asyncio
+from uuid import UUID
 
 import pytest
 
 from src.db.models.project import FinalizationEvent, ProgressEvent
 from src.routers import router as router_module
 from src.sse.broker import EventBroker
+
+PROJECT_ID = UUID("11111111-1111-4111-8111-111111111111")
 
 
 class FakeRequest:
@@ -69,9 +72,9 @@ async def _call_route(broker, request):
 
 def test_sse_stream_headers_and_progress_framing(monkeypatch):
     monkeypatch.setattr(router_module, "asyncio", _FastAsyncio(0.05))
-    payload = ProgressEvent(execution_id=101, completion_percentage=75).model_dump_json(
-        by_alias=True
-    )
+    payload = ProgressEvent(
+        project_id=PROJECT_ID, completion_percentage=75
+    ).model_dump_json(by_alias=True)
     broker = PrefilledBroker("progress", payload)
     response = _response(broker, FakeRequest())
 
@@ -92,7 +95,10 @@ def test_sse_stream_headers_and_progress_framing(monkeypatch):
 def test_sse_frames_finalization_event(monkeypatch):
     monkeypatch.setattr(router_module, "asyncio", _FastAsyncio(0.05))
     payload = FinalizationEvent(
-        execution_id=101, finalization_percentage=60, final_repo_url=None, finalize_error=None
+        project_id=PROJECT_ID,
+        finalization_percentage=60,
+        final_repo_url=None,
+        finalize_error=None,
     ).model_dump_json(by_alias=True)
     broker = PrefilledBroker("finalization", payload)
     response = _response(broker, FakeRequest())

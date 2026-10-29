@@ -1,26 +1,57 @@
 import logging
+from dataclasses import dataclass
 from enum import Enum
+from uuid import UUID
 
-from src.clients.finalize_webhook import FinalizeWebhookClient
+from src.clients.n8n_client import N8NClient
 from src.db.models.project import (
     ProgressEvent,
     ProgressUpdateRequest,
     Project,
+    ProjectCreateRequest,
     ProjectDetail,
     ProjectNameUpdateRequest,
+    ProjectStatus,
+    RetryPhase,
 )
 from src.repositories.projects import ProjectRepository
 from src.sse.broker import EventBroker
 
 logger = logging.getLogger(__name__)
 
+_NEXT_PHASE_BY_STATUS = {
+    ProjectStatus.REQUIREMENTS_DONE: RetryPhase.CODE,
+    ProjectStatus.CODE_DONE: RetryPhase.TEST,
+    ProjectStatus.TEST_DONE: RetryPhase.REVIEW,
+    ProjectStatus.REVIEW_DONE: RetryPhase.RETROSPECTIVE,
+}
 
-class FinalizeResult(str, Enum):
+
+class CreateProjectStatus(str, Enum):
+    CREATED = "created"
+    NOT_CONFIGURED = "not_configured"
+    TITLE_EXTRACTION_FAILED = "title_extraction_failed"
+    PERSIST_FAILED = "persist_failed"
+
+
+class RetryPhaseResult(str, Enum):
     OK = "ok"
     NOT_FOUND = "not_found"
     CONFLICT = "conflict"
-    WEBHOOK_FAILED = "webhook_failed"
     NOT_CONFIGURED = "not_configured"
+    WEBHOOK_FAILED = "webhook_failed"
+
+
+@dataclass(frozen=True)
+class CreateProjectOutcome:
+    status: CreateProjectStatus
+    project: ProjectDetail | None = None
+
+
+@dataclass(frozen=True)
+class RetryPhaseOutcome:
+    result: RetryPhaseResult
+    project: ProjectDetail | None = None
 
 
 class ProjectService:
@@ -28,69 +59,100 @@ class ProjectService:
         self,
         project_repository: ProjectRepository,
         event_broker: EventBroker,
-        finalize_webhook: FinalizeWebhookClient,
+        n8n_client: N8NClient,
     ):
         self.__project_repository = project_repository
         self.__event_broker = event_broker
-        self.__finalize_webhook = finalize_webhook
+        self.__n8n_client = n8n_client
 
     async def list_projects(self) -> list[Project]:
         logger.debug("Fetching projects...")
         return await self.__project_repository.list_projects()
 
-    async def get_project_detail(self, execution_id: int) -> ProjectDetail | None:
-        logger.debug(f"Fetching project detail for execution_id {execution_id}...")
-        return await self.__project_repository.get_project_detail(execution_id)
+    async def get_project_detail(self, project_id: UUID) -> ProjectDetail | None:
+        logger.debug(f"Fetching project detail for id {project_id}...")
+        return await self.__project_repository.get_project_detail(project_id)
+
+    async def create_project(self, payload: ProjectCreateRequest) -> CreateProjectOutcome:
+        if not self.__n8n_client.project_title_configured:
+            logger.error("Project title webhook is not configured.")
+            return CreateProjectOutcome(CreateProjectStatus.NOT_CONFIGURED)
+
+        title = await self.__n8n_client.extract_project_title(payload.user_input)
+        if title is None:
+            logger.error("Could not extract the project title from the user input.")
+            return CreateProjectOutcome(CreateProjectStatus.TITLE_EXTRACTION_FAILED)
+
+        logger.debug(f"Creating project '{title}' (auto={payload.auto})...")
+        project = await self.__project_repository.create_project(
+            title, payload.user_input, payload.auto
+        )
+        if project is None:
+            return CreateProjectOutcome(CreateProjectStatus.PERSIST_FAILED)
+
+        if not self.__n8n_client.requirements_configured:
+            logger.error(
+                f"Requirements webhook is not configured; project '{project.id}' "
+                "was created without triggering requirements generation."
+            )
+        elif not await self.__n8n_client.trigger_requirements(str(project.id)):
+            logger.error(
+                f"Could not trigger requirements generation for project '{project.id}'."
+            )
+
+        return CreateProjectOutcome(CreateProjectStatus.CREATED, project)
 
     async def rename_project(
-        self, execution_id: int, payload: ProjectNameUpdateRequest
+        self, project_id: UUID, payload: ProjectNameUpdateRequest
     ) -> ProjectDetail | None:
-        logger.debug(f"Renaming project {execution_id} to '{payload.name}'...")
-        return await self.__project_repository.update_name(execution_id, payload.name)
+        logger.debug(f"Renaming project {project_id} to '{payload.name}'...")
+        return await self.__project_repository.update_name(project_id, payload.name)
 
-    async def finalize_project(self, execution_id: int) -> FinalizeResult:
-        logger.debug(f"Requesting finalization for execution_id {execution_id}...")
+    async def retry_phase(self, project_id: UUID, phase: RetryPhase) -> RetryPhaseOutcome:
+        logger.debug(f"Requesting retry of {phase.value} for project {project_id}...")
 
-        # Atomically claim the request: only a fully complete, not-yet-finalized
-        # project can be finalized.
-        requested = await self.__project_repository.request_finalization(execution_id)
-        if requested is None:
-            existing = await self.__project_repository.get_project_detail(execution_id)
-            return FinalizeResult.CONFLICT if existing else FinalizeResult.NOT_FOUND
+        project = await self.__project_repository.get_project_detail(project_id)
+        if project is None:
+            return RetryPhaseOutcome(RetryPhaseResult.NOT_FOUND)
 
-        if not self.__finalize_webhook.configured:
-            await self.__project_repository.reset_finalization(
-                execution_id, "finalization is not configured"
-            )
-            return FinalizeResult.NOT_CONFIGURED
+        can_retry = project.status == ProjectStatus.ERROR
+        next_phase = _NEXT_PHASE_BY_STATUS.get(project.status)
+        can_start_next = next_phase == phase and (
+            phase == RetryPhase.RETROSPECTIVE or not project.auto
+        )
+        if not (can_retry or can_start_next):
+            return RetryPhaseOutcome(RetryPhaseResult.CONFLICT)
 
-        triggered = await self.__finalize_webhook.trigger(execution_id)
+        if not self.__n8n_client.phase_configured(phase.value):
+            return RetryPhaseOutcome(RetryPhaseResult.NOT_CONFIGURED)
+
+        triggered = await self.__n8n_client.trigger_phase(phase.value, str(project_id))
         if not triggered:
-            await self.__project_repository.reset_finalization(
-                execution_id, "could not reach the finalization workflow"
-            )
-            return FinalizeResult.WEBHOOK_FAILED
+            return RetryPhaseOutcome(RetryPhaseResult.WEBHOOK_FAILED)
 
-        logger.info(f"Finalization started for execution_id {execution_id}.")
-        return FinalizeResult.OK
+        logger.info(f"{phase.value} phase started for project {project_id}.")
+        return RetryPhaseOutcome(RetryPhaseResult.OK, project)
 
     async def update_progress(
-        self, execution_id: int, payload: ProgressUpdateRequest
+        self, project_id: UUID, payload: ProgressUpdateRequest
     ) -> Project | None:
-        logger.debug(f"Updating progress for execution_id {execution_id} to {payload.completion_percentage}%...")
+        logger.debug(
+            f"Updating progress for project {project_id} to {payload.completion_percentage}%..."
+        )
         updated = await self.__project_repository.update_completion(
-            execution_id, payload.completion_percentage
+            project_id, payload.completion_percentage
         )
         if updated is None:
             return None
 
         event = ProgressEvent(
-            execution_id=updated.execution_id,
+            project_id=updated.id,
             completion_percentage=updated.completion_percentage,
+            status=updated.status,
         )
         await self.__event_broker.publish_progress(event)
         logger.info(
-            f"Progress updated and broadcast for execution_id {execution_id}.",
-            extra={"event": event.model_dump(by_alias=True)},
+            f"Progress updated and broadcast for project {project_id}.",
+            extra={"event": event.model_dump(by_alias=True, mode="json")},
         )
         return updated

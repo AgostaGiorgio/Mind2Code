@@ -44,9 +44,20 @@ Copy `.env.example` to `.env` and fill in the values:
 
 | Variable | Description |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL async connection URI (`postgresql+asyncpg://...`) |
+| `POSTGRESQL_USER` | PostgreSQL user |
+| `POSTGRESQL_PASSWORD` | PostgreSQL password |
+| `POSTGRESQL_HOST` | PostgreSQL host |
+| `POSTGRESQL_PORT` | PostgreSQL port |
+| `POSTGRESQL_DATABASE` | PostgreSQL database name |
 | `CORS_ORIGINS` | JSON array of allowed origins, e.g. `["http://localhost:5173"]` |
 | `LOG_LEVEL` | *(optional)* Python logging level (default `INFO`) |
+| `N8N_PROJECT_TITLE_WEBHOOK_URL` | n8n webhook extracting the project title from `user_input` (unset ⇒ project creation returns 503) |
+| `N8N_REQUIREMENTS_WEBHOOK_URL` | n8n webhook that starts requirements generation from the DB project id |
+| `N8N_CODE_WEBHOOK_URL` | n8n webhook for the code phase (retry) |
+| `N8N_TEST_WEBHOOK_URL` | n8n webhook for the test phase (retry) |
+| `N8N_REVIEW_WEBHOOK_URL` | n8n webhook for the review phase (retry) |
+| `N8N_RETROSPECTIVE_WEBHOOK_URL` | n8n webhook for the retrospective phase (retry) |
+| `N8N_TIMEOUT_SECONDS` | Timeout shared by every n8n webhook call (default `120`) |
 
 ## Local development
 
@@ -67,13 +78,15 @@ All endpoints are prefixed with `/api/v1`, except the health check.
 | --- | --- | --- |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/v1/projects` | List all projects |
+| `POST` | `/api/v1/projects` | Create a project (`userInput`, `auto`): n8n title extraction → DB insert → n8n requirements trigger |
 | `GET` | `/api/v1/events` | SSE stream (`text/event-stream`) |
-| `POST` | `/api/v1/projects/{executionId}/progress` | Update completion percentage |
+| `POST` | `/api/v1/projects/{projectId}/progress` | Update completion percentage |
+| `POST` | `/api/v1/projects/{projectId}/{phase}` | Start the next phase (`auto = false`; `RETROSPECTIVE` always manual) or retry a failed phase (`ERROR`) |
 
 ### SSE event contract
 
 - Event type: `progress`
-- Payload: `{"executionId": <int>, "completionPercentage": <int>}`
+- Payload: `{"projectId": "<uuid>", "completionPercentage": <int>, "status": "<status or null>"}`
 - Heartbeat comment (`: heartbeat`) is sent at least every 15 seconds.
 
 ## Migrations
@@ -88,5 +101,8 @@ yoyo rollback --database <db_url> ./migrations # roll back the last one
 
 ```sh
 docker build -t mind2code-backend .
-docker run -p 8000:8000 -e DATABASE_URL=<async_db_url> -e CORS_ORIGINS='["http://localhost:5173"]' mind2code-backend
+docker run -p 8000:8000 \
+  -e POSTGRESQL_USER=appuser -e POSTGRESQL_PASSWORD=post-password \
+  -e POSTGRESQL_HOST=localhost -e POSTGRESQL_PORT=5432 -e POSTGRESQL_DATABASE=mind2code \
+  -e CORS_ORIGINS='["http://localhost:5173"]' mind2code-backend
 ```
